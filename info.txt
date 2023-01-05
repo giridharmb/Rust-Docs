@@ -1,0 +1,7 @@
+What is a Database Connection?
+Any software application needs to store the data in a database
+and for the application to interact with a database server, we
+need a Database Connection. The Database connection is nothing
+but a way for the application software to interact with the database
+server software and we use the connection to send commands (SQL) to
+the database and obtain the response from the database in the form of a Result Set.
