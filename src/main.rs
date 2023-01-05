@@ -22,6 +22,43 @@ extern crate core; // reqwest = "0.11.13"
 
 use std::process::Command; // for executing external commands
 
+extern crate serde_json; // for parsing json
+use serde_json::Value as JsonValue; // for parsing json
+use serde_json::Result as JsonResult;
+
+extern crate serde; // for parsing json
+
+#[macro_use]
+extern crate serde_derive; // for parsing json
+
+
+/*
+{
+    "customerid": "630c2272eabd3d30fe44d139",
+    "age": 28,
+    "eyeColor": "brown",
+    "name": "Mabel Haley",
+    "gender": "female",
+    "company": "ENOMEN",
+    "email": "mabelhaley@enomen.com",
+    "phone": "+1 (880) 516-2365",
+    "address": "184 Bergen Court, Gorham, American Samoa, 8722"
+}
+*/
+
+#[derive(Serialize,Deserialize)] // derive attribute -> Serialize,Deserialize (traits)
+struct Customer {
+    customerid: String,
+    age: u32,
+    eyecolor: String,
+    name: String,
+    gender: String,
+    company: String,
+    email: String,
+    phone: String,
+    address: String,
+}
+
 #[allow(dead_code)] // this will suppress unused variable warnings
 enum Direction {
     Up,
@@ -540,6 +577,45 @@ fn main() {
         Err(e) => {
             println!("there was an error execiting the command : {}", e);
         }
+    }
+
+    // -------------- parsing json ----------------
+
+    let json_str = r#"
+        {
+            "customerid": "630c2272eabd3d30fe44d139",
+            "age": 28,
+            "eyecolor": "brown",
+            "name": "Mabel Haley",
+            "gender": "female",
+            "company": "ENOMEN",
+            "email": "mabelhaley@enomen.com",
+            "phone": "+1 (880) 516-2365",
+            "address": "184 Bergen Court, Gorham, American Samoa, 8722"
+        }
+    "#;
+
+    let res = serde_json::from_str(json_str);
+
+    // method-1 of getting json data
+
+    if res.is_ok() { // if json_str is a valid json
+        // JsonValue -> is a struct
+        let deserialized_json: JsonValue = res.unwrap();
+        println!("method-1 : customerid : {}", deserialized_json["customerid"].as_str().unwrap());
+        println!("method-1 : age : {}", deserialized_json["age"].as_i64().unwrap());
+    } else {
+        println!("sorry, could not parse json string !");
+    }
+
+    // method-2 of getting json data (using structs)
+
+    let res2:JsonResult<JsonValue> = serde_json::from_str(json_str);
+
+    if res2.is_ok() {
+        let c: Customer = serde_json::from_str(json_str).unwrap();
+        println!("method-2 : customerid : {}", c.customerid);
+        println!("method-2 : age : {}", c.age);
     }
 
 }
