@@ -170,7 +170,7 @@ io::stdout().flush().unwrap();
 
 /*
 unwrap() will extract data from Result
-FYI : unwrap() : This is not safe to do : User can input text instead of numbers and program can crash
+unwrap() : This is not safe to do : user can input text instead of numbers == crash
 */
 
 // method_1_start
