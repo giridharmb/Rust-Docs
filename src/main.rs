@@ -105,6 +105,108 @@ impl Day {
 fn main() {
     println!("Hello, world!");
 
+    /*
+        Notes: ownership and borrowing
+
+        Only one reference can own one peice of data at any given time.
+
+        let s = String::from("hello");
+        let y = s;
+        println!("{}", s); // -> this is NOT VALID , since y owns s now
+
+        To fix it:
+
+        let s = String::from("hello");
+        let y = &s; // this is called "borrowing" , y is borrowing reference of s
+        println!("{}", s); // -> now, this is perfectly fine
+
+        // ----- HEAP (for complex data types) -----
+
+        fn take_data(v: Vec<i32>) {
+            println!("We took v : sum of v[0] + v[1] is equal to : {}", v[0] + v[1]);
+        }
+
+        fn main() {
+            let mut v = Vec::new();
+
+            for i in 1..100 {
+                v.push(i);
+            }
+
+            take_data(v); // this is called 'moving'
+
+            // take_data(...)
+            // above this peice of code, will transfer the
+            // ownership of 'v' from main() function to take_data() function
+
+            // println!("We took v : sum of v[0] + v[1] is equal to : {}", v[0] + v[1]);
+
+            println("finished !");
+        }
+
+        // ----- copying -----
+
+        fn copy_data(a: i32, b: i32) {
+            println!("{}", a+b);
+        }
+
+        fn main() {
+            let a = 32;
+            let b = 45;
+
+            // a and b -> exist on the stack, and not the heap,
+            // so in the below call function call 'copy_data(a,b)'
+            // they are 'copied' and not 'moved'
+            // so, they will still remain in the scope of main()
+
+            copy_data(a,b);
+
+            println!("we have a: {} , b: {}", a,b);
+        }
+
+        // ------ borrowing ------
+
+        // borrowing lets us have multiple references to a single resource
+        // a reference is also an object in rust
+
+        // *mutable references* ---> are moved
+        // *immutable references* ---> are copied
+
+        //  ------- mutable and immutable references -------
+
+        fn re(v: Vec<i32>) -> Vec<i32> {
+            println!("{}", v[15] + v[25]);
+            return v
+        }
+
+        fn borrow_1(v: &Vec<i32>) {
+            println!("{}", (*v)[10] + (*v)[20]); // note : this is '(*v)' and not 'v'
+        }
+
+        fn borrow_2(v: &Vec<i32>) {
+            println!("{}", v[30] + v[40]); // note : this is 'v' and not '(*v)'
+        }
+
+        fn main() {
+            let mut v = Vec::new();
+
+            for i in 1..1000 {
+                v.push(i);
+            }
+
+            v = re(v); // re() function will transfer ownership of 'v' back to main() function
+
+            println!("still own v : {} {}", v[0], v[1]);
+
+            borrow_1(&v);
+            println!("still own v : {} {}", v[0], v[1]);
+
+            borrow_2(&v);
+            println!("still own v : {} {}", v[0], v[1]);
+        }
+
+    */
+
     let my_strings = vec!["x", "y", "z"];
 
     let number_iterator = 1..11;
