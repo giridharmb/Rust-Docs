@@ -179,9 +179,9 @@ unwrap() : This is not safe to do : user can input text instead of numbers == cr
 
 // method_1_start
 {
-    stdin().read_line(&mut my_input_string).expect("Did not enter valid input !");
+    stdin().read_line(&mut my_input_string).expect("did not enter valid input !");
     let my_number: f64 = my_input_string.trim().parse().unwrap();
-    let my_number: f64 = my_input_string.trim().parse().expect("invalid input ! enter a number !");
+    let my_number: f64 = my_input_string.trim().parse().expect("invalid input, enter a number !");
     println!("Yay ! you entered a number : {:?}", my_number);
 }
 // method_1_end
