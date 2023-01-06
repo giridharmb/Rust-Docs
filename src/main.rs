@@ -105,108 +105,6 @@ impl Day {
 fn main() {
     println!("Hello, world!");
 
-    /*
-        Notes: ownership and borrowing
-
-        Only one reference can own one peice of data at any given time.
-
-        let s = String::from("hello");
-        let y = s;
-        println!("{}", s); // -> this is NOT VALID , since y owns s now
-
-        To fix it:
-
-        let s = String::from("hello");
-        let y = &s; // this is called "borrowing" , y is borrowing reference of s
-        println!("{}", s); // -> now, this is perfectly fine
-
-        // ----- HEAP (for complex data types) -----
-
-        fn take_data(v: Vec<i32>) {
-            println!("We took v : sum of v[0] + v[1] is equal to : {}", v[0] + v[1]);
-        }
-
-        fn main() {
-            let mut v = Vec::new();
-
-            for i in 1..100 {
-                v.push(i);
-            }
-
-            take_data(v); // this is called 'moving'
-
-            // take_data(...)
-            // above this peice of code, will transfer the
-            // ownership of 'v' from main() function to take_data() function
-
-            // println!("We took v : sum of v[0] + v[1] is equal to : {}", v[0] + v[1]);
-
-            println("finished !");
-        }
-
-        // ----- copying -----
-
-        fn copy_data(a: i32, b: i32) {
-            println!("{}", a+b);
-        }
-
-        fn main() {
-            let a = 32;
-            let b = 45;
-
-            // a and b -> exist on the stack, and not the heap,
-            // so in the below call function call 'copy_data(a,b)'
-            // they are 'copied' and not 'moved'
-            // so, they will still remain in the scope of main()
-
-            copy_data(a,b);
-
-            println!("we have a: {} , b: {}", a,b);
-        }
-
-        // ------ borrowing ------
-
-        // borrowing lets us have multiple references to a single resource
-        // a reference is also an object in rust
-
-        // *mutable references* ---> are moved
-        // *immutable references* ---> are copied
-
-        //  ------- mutable and immutable references -------
-
-        fn re(v: Vec<i32>) -> Vec<i32> {
-            println!("{}", v[15] + v[25]);
-            return v
-        }
-
-        fn borrow_1(v: &Vec<i32>) {
-            println!("{}", (*v)[10] + (*v)[20]); // note : this is '(*v)' and not 'v'
-        }
-
-        fn borrow_2(v: &Vec<i32>) {
-            println!("{}", v[30] + v[40]); // note : this is 'v' and not '(*v)'
-        }
-
-        fn main() {
-            let mut v = Vec::new();
-
-            for i in 1..1000 {
-                v.push(i);
-            }
-
-            v = re(v); // re() function will transfer ownership of 'v' back to main() function
-
-            println!("still own v : {} {}", v[0], v[1]);
-
-            borrow_1(&v);
-            println!("still own v : {} {}", v[0], v[1]);
-
-            borrow_2(&v);
-            println!("still own v : {} {}", v[0], v[1]);
-        }
-
-    */
-
     let my_strings = vec!["x", "y", "z"];
 
     let number_iterator = 1..11;
@@ -428,32 +326,6 @@ fn main() {
         width:15,
         height:20
     };
-
-    /*
-        Important (use of Reference):
-
-        If you calculate area this way >
-
-        fn calculate_area(obj: MyObject) -> u32 {
-            obj.width * obj.height
-        }
-
-        calculate_area(my_object)
-
-        Then, you will see an error in the compiler this way:
-
-        error[E0505]: cannot move out of `my_object` because it is borrowed
-        move out of `my_object` occurs here
-
-        Instead, you should caluclate the area this way:
-
-        fn calculate_area(obj: &MyObject) -> u32 {
-            obj.width * obj.height
-        }
-
-        calculate_area(&my_object)
-
-    */
 
     println!("Area of my_object with dimensions {} x {} => {}", my_object.width, my_object.height, calculate_area(&my_object));
 
@@ -868,55 +740,6 @@ fn main() {
     println!("enter a number: ");
 
     io::stdout().flush().unwrap();
-
-    // method-1 (not safe)
-    // completely commented out
-
-    /*
-        unwrap() will extract data from Result
-        FYI : unwrap() : This is not safe to do : User can input text instead of numbers and program can crash
-     */
-
-    // method_1_start
-    /*
-
-    {
-        stdin().read_line(&mut my_input_string).expect("Did not enter valid input !");
-        let my_number: f64 = my_input_string.trim().parse().unwrap();
-        let my_number: f64 = my_input_string.trim().parse().expect("invalid input ! you probably did not enter a number !");
-        println!("Yay ! you entered a number : {:?}", my_number);
-    }
-
-    */
-    // method_1_end
-
-    // method-2 (safe) -> use it this way !
-
-    // what ever value loop returns, that will be stored in my_num
-    // whatever value comes after 'break', that value will be returned by loop
-
-    // method_2_start
-    /*
-
-    let my_num = loop {
-        my_input_string.clear();
-
-        stdin().read_line(&mut my_input_string).expect("did not enter a correct string !");
-
-        match my_input_string.trim().parse::<f64>() {
-            Ok(_s) => {
-                break _s;
-            }
-            Err(_err) => {
-                println!("Try again, invalid input string.");
-            }
-        }
-    };
-    println!("Yay ! you entered a number : {:?}", my_num);
-
-    */
-
-    // method_2_end
 
     let my_num = 51;
     /*
