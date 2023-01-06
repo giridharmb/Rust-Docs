@@ -18,19 +18,26 @@ extern crate regex; // make sure you add (regex = "1.7.0") in Cargo.toml first
 use regex::{Regex};
 
 extern crate reqwest;
-extern crate core; // reqwest = "0.11.13"
+
 
 use std::process::Command; // for executing external commands
+
+use std::io::{stdin, self, Write, Read};
+use std::num::ParseFloatError; // for reading user's input
 
 extern crate serde_json; // for parsing json
 use serde_json::Value as JsonValue; // for parsing json
 use serde_json::Result as JsonResult;
+use tokio::io::AsyncReadExt;
 
 extern crate serde; // for parsing json
 
 #[macro_use]
-extern crate serde_derive; // for parsing json
+extern crate serde_derive;
+extern crate core; // for parsing json
 
+
+use std::io::ErrorKind; // for handling errors below
 
 /*
 {
@@ -618,7 +625,174 @@ fn main() {
         println!("method-2 : age : {}", c.age);
     }
 
+    // --------- Result type -------------
+
+    let mut my_input_string = String::new();
+    println!("enter a number: ");
+
+    io::stdout().flush().unwrap();
+
+    // method-1 (not safe)
+    // completely commented out
+
+    /*
+        unwrap() will extract data from Result
+        FYI : unwrap() : This is not safe to do : User can input text instead of numbers and program can crash
+     */
+
+    // method_1_start
+    /*
+
+    {
+        stdin().read_line(&mut my_input_string).expect("Did not enter valid input !");
+        let my_number: f64 = my_input_string.trim().parse().unwrap();
+        let my_number: f64 = my_input_string.trim().parse().expect("invalid input ! you probably did not enter a number !");
+        println!("Yay ! you entered a number : {:?}", my_number);
+    }
+
+    */
+    // method_1_end
+
+    // method-2 (safe) -> use it this way !
+
+    // what ever value loop returns, that will be stored in my_num
+    // whatever value comes after 'break', that value will be returned by loop
+
+    // method_2_start
+    /*
+
+    let my_num = loop {
+        my_input_string.clear();
+
+        stdin().read_line(&mut my_input_string).expect("did not enter a correct string !");
+
+        match my_input_string.trim().parse::<f64>() {
+            Ok(_s) => {
+                break _s;
+            }
+            Err(_err) => {
+                println!("Try again, invalid input string.");
+            }
+        }
+    };
+    println!("Yay ! you entered a number : {:?}", my_num);
+
+    */
+
+    // method_2_end
+
+    let my_num = 51;
+    /*
+        func returns this : Result<u32, &'static str>
+        If it reaches Ok(..) , it will return : u32
+        If it reaches Err(..) , it will return : &'static str (borrowed static string)
+    */
+
+    /*
+    Result -> enum : it represents success or failure
+
+        enum Result<T, E>
+        {
+            Ok(T),
+            Err(E),
+        }
+    */
+
+
+    fn is_it_fifty(num: i32) -> Result<u32, &'static str> {
+        let error = "oops it did not work !";
+
+        if num == 50 {
+            Ok(num as u32)
+        } else {
+            Err(error)
+        }
+    }
+
+    match is_it_fifty(my_num) {
+        Ok(_v) => {
+            println!("Good ! my_num is 50 !");
+        }
+        Err(_e) => {
+            println!("Error ! my_num is not 50 , it is actually : {}", my_num);
+        }
+    }
+
+    let f = File::open("hello.txt");
+
+    // method-1 : simple case
+
+    // let f = match f {
+    //     Ok(file) => file,
+    //     Err(error) => panic!("problem opening the file : {:?}", error),
+    // };
+
+    // method-2 : little more detailed way of handling error
+
+    let f = match f {
+        Ok(file) => file,
+        Err(error) => match error.kind() {
+            // recover from the error and create the file when it originally was not found.
+            // creating the file could also fail
+            ErrorKind::NotFound => match File::create("hello.txt") {
+                Ok(fc) => fc,
+                Err(e) => panic!("problem creating the file : {:?}", e),
+            },
+            other_error => {
+                panic!("problem opening the file : {:?}", other_error)
+            }
+        },
+    };
 }
+
+// error handling example-1
+
+fn read_data_from_file_v1() -> Result<String, io::Error> {
+    let f = File::open("hello.txt");
+
+    let mut f = match f {
+        Ok(file) => file,
+        Err(e) => return Err(e),
+    };
+
+    let mut s = String::new();
+
+    match f.read_to_string(&mut s) {
+        Ok(_) => Ok(s),
+        Err(e) => Err(e),
+    }
+}
+
+// error handling example-2
+
+/*
+In the below example, we have this >
+let mut f = File::open("hello.txt")?;
+and this >
+f.read_to_string(&mut s)?;
+
+? symbol : means, if there is an error, then return it immediately (rust will take care of it)
+*/
+fn read_data_from_file_v2() -> Result<String, io::Error> {
+    let mut f = File::open("hello.txt")?;
+    let mut s = String::new();
+    f.read_to_string(&mut s)?;
+    Ok(s)
+}
+
+fn read_data_from_file_v3() -> Result<String, io::Error> {
+    // example of chaining , that is reducing the lines of code in read_data_from_file_v2()
+    let mut s = String::new();
+    let mut f = File::open("hello.txt")?.read_to_string(&mut s)?;
+    Ok(s)
+}
+
+/*
+In the below example, we have this as the return type:
+Result<(), Box<dyn std::error::Error>>
+
+() : empty parentheses : this of this as *void*, or basically *nothing*
+*/
 
 #[tokio::main]
 async fn make_http_request()  -> Result<(), Box<dyn std::error::Error>> {
@@ -628,27 +802,15 @@ async fn make_http_request()  -> Result<(), Box<dyn std::error::Error>> {
 
     // Perform the actual execution of the network request
     let res = client
-        .get("https://v2.jokeapi.dev/joke/Any2")
+        .get("https://v2.jokeapi.dev/joke/Any")
         .send()
         .await?;
-
-    // Parse the response body as Json in this case
-    // let ip = res
-    //     .json::<HashMap<String, String>>()
-    //     .await?;
 
     println!("status : {}", res.status());
 
     println!("{:?}", res);
     Ok(())
 }
-
-// async fn make_http_request() -> Result<(), reqwest::Error> {
-//     let client = reqwest::Client::new();
-//     let body =  client.get("https://v2.jokeapi.dev/joke/Any").await?.text().await?;
-//     println!("{}", body);
-//     Ok(())
-// }
 
 fn get_occupation(name: &str) -> Option<&str> {
     match name {
