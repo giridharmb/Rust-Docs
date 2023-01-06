@@ -1,5 +1,9 @@
 #### Notes
 
+Please have a look the following file for code snippets/samples
+
+#### [src/main.rs](https://github.com/giridharmb/rust-app1/blob/master/src/main.rs)
+
 ```rust
 // In this print statement >
 println!("{:?}", my_data);
