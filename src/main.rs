@@ -7,7 +7,8 @@ use std::io::prelude::*; // for reading a file
 
 use std::collections::HashMap;
 
-use std::env;
+use std::{env, fmt};
+use std::fmt::Formatter;
 use std::future::Future; // for CLI
 
 extern crate rand; // for random number , make sure you add (rand = "0.8.5") in Cargo.toml first
@@ -37,21 +38,9 @@ extern crate serde_derive;
 extern crate core; // for parsing json
 
 
-use std::io::ErrorKind; // for handling errors below
+use std::io::ErrorKind;
+use serde_json::Value::Object; // for handling errors below
 
-/*
-{
-    "customerid": "630c2272eabd3d30fe44d139",
-    "age": 28,
-    "eyeColor": "brown",
-    "name": "Mabel Haley",
-    "gender": "female",
-    "company": "ENOMEN",
-    "email": "mabelhaley@enomen.com",
-    "phone": "+1 (880) 516-2365",
-    "address": "184 Bergen Court, Gorham, American Samoa, 8722"
-}
-*/
 
 #[derive(Serialize,Deserialize)] // derive attribute -> Serialize,Deserialize (traits)
 struct Customer {
@@ -322,7 +311,153 @@ fn main() {
 
     println!("{}", contents);
 
-    // CLI
+    // ------------ using reference ------------
+
+    struct MyObject {
+        width: u32,
+        height: u32
+    }
+
+    fn calculate_area(obj: &MyObject) -> u32 {
+        obj.width * obj.height
+    }
+
+    let my_object = MyObject {
+        width:15,
+        height:20
+    };
+
+    /*
+        Important (use of Reference):
+
+        If you calculate area this way >
+
+        fn calculate_area(obj: MyObject) -> u32 {
+            obj.width * obj.height
+        }
+
+        calculate_area(my_object)
+
+        Then, you will see an error in the compiler this way:
+
+        error[E0505]: cannot move out of `my_object` because it is borrowed
+        move out of `my_object` occurs here
+
+        Instead, you should caluclate the area this way:
+
+        fn calculate_area(obj: &MyObject) -> u32 {
+            obj.width * obj.height
+        }
+
+        calculate_area(&my_object)
+
+    */
+
+    println!("Area of my_object with dimensions {} x {} => {}", my_object.width, my_object.height, calculate_area(&my_object));
+
+    // The above area calculation can be done in a better way >
+
+    impl MyObject {
+        fn calculate_area(&self) -> u32 {
+            self.width * self.height
+        }
+
+        fn show(&self) {
+            println!("Area of the specified object with dimensions {} x {} => {}", self.width, self.height, self.calculate_area());
+        }
+    }
+
+    let my_object_v2 = MyObject {
+        width:35,
+        height:70
+    };
+
+    println!("Area of my_object_v2 with dimensions {} x {} => {}", my_object_v2.width, my_object_v2.height, my_object_v2.calculate_area());
+
+    // creating new objects using 'MyObject::new_object(...)'
+
+    impl MyObject {
+        fn new_object(width: u32, height: u32) -> MyObject {
+            MyObject {
+                width,
+                height
+            }
+        }
+    }
+
+    let my_object_v3 = MyObject::new_object(35,45);
+
+    my_object_v3.show();
+
+    /*
+        FYI:
+        In this print statement >
+        println!("{:?}", my_data);
+        {:?} -> is debug flag/trait
+        {:#?} -> is pretty debug flag/trait
+
+        To apply debug flag/trait, we need to add this:
+        #[derive(Debug)] -> this is an annotation
+    */
+
+    // example of Debug Flag / Debug Trait
+
+    #[derive(Debug)] // this is an annotation
+    struct MyObjectTest {
+        width: u32,
+        height: u32
+    }
+
+    impl MyObjectTest {
+        fn calculate_area(&self) -> u32 {
+            self.width * self.height
+        }
+
+        fn new_object(width: u32, height: u32) -> MyObjectTest {
+            MyObjectTest {
+                width,
+                height
+            }
+        }
+
+        fn show(&self) {
+            println!("Area of the specified object with dimensions {} x {} => {}", self.width, self.height, self.calculate_area());
+        }
+    }
+
+    let my_object_test = MyObjectTest::new_object(99,67);
+    my_object_test.show();
+
+    // using debug flag/trait using {:?}
+    // pretty debug flag/trait {:#?}
+    println!("my_object_test : {:?}", my_object_test);
+    println!("my_object_test : {:#?}", my_object_test);
+
+    // ----------- applying Display trait ----------
+    // import : use std::fmt;
+
+    // the below impl , will enable us to do something like : println!("{}", my_object_test);
+
+    impl fmt::Display for MyObjectTest {
+        /*
+            this peice of code is auto-completed by the IDE
+
+            fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+                todo!()
+            }
+
+            We have to replace todo!() -> with out logic
+        */
+
+        fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+            write!(f, "(width is {} , height is {}) , Area : {}", self.width, self.height, self.calculate_area())
+        }
+    }
+
+    println!("Here are the dimensions and area for my_object_test : {}", my_object_test);
+
+
+    // ----------- CLI ------------
 
     println!("\nCLI >>\n");
 
