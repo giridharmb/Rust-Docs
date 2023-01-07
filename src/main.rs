@@ -816,6 +816,27 @@ fn main() {
         }
     }
 
+    // --------- match and bind -----------
+
+    // use this : ..= , for inclusive range
+    // see below
+
+    let p = 5;
+
+    match p {
+        n @ 1..=10 => println!("n : {}", n), // this line will print > "n : 5"
+        n @ 11..=20 => println!("n : {}", n),
+        _ => println!("oops ! no match found !"),
+    }
+    let p = 15;
+    let n = match p {
+        n @ 1..=10 => n,
+        n @ 11..=20 => n,
+        _ => 0,
+    };
+
+    println!("n : {}", n); // this line will print > "n : 15"
+
 } // -------------- fn main()
 
 // Error handling example-1
