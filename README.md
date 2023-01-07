@@ -220,3 +220,70 @@ enum Result<T, E>
     Err(E),
 }
 ```
+
+Rust's named lifetimes
+
+```
+Every reference in Rust has a lifetime, which is the scope for which that reference is valid. 
+Most of the time lifetimes are implicit and inferred, just like most of the time types are inferred. 
+Similarly to when we have to annotate types because multiple types are possible, there are cases 
+where the lifetimes of references could be related in a few different ways, so Rust needs us to 
+annotate the relationships using generic lifetime parameters so that it can make sure the actual 
+references used at runtime will definitely be valid.
+
+Lifetime annotations don’t change how long any of the references involved live. 
+In the same way that functions can accept any type when the signature specifies a 
+generic type parameter, functions can accept references with any lifetime when the 
+signature specifies a generic lifetime parameter. What lifetime annotations do is 
+relate the lifetimes of multiple references to each other.
+
+Lifetime annotations have a slightly unusual syntax: the names of lifetime parameters 
+must start with an apostrophe '. The names of lifetime parameters are usually all lowercase, 
+and like generic types, their names are usually very short. 'a is the name most people 
+use as a default. Lifetime parameter annotations go after the & of a reference, 
+and a space separates the lifetime annotation from the reference’s type.
+```
+
+```rust
+pub fn func_test(a: &str, b: &str) -> &str {
+    return b
+}
+```
+
+Above function won't compile because it returns a borrowed value, <br/>
+but does not specify whether it borrowed it from `a` or `b`.
+
+`func_test(...)` throws the following error:
+
+```
+error[E0106]: missing lifetime specifier
+
+XXX | pub fn func_test(a: &str, b: &str) -> &str {
+    |                     ----     ----     ^ expected named lifetime parameter
+
+help: this function's return type contains a borrowed value, but the signature
+does not say whether it is borrowed from `a` or `b`
+
+help: consider introducing a named lifetime parameter
+
+XXX | pub fn func_test<'a>(a: &'a str, b: &'a str) -> &'a str {
+    |                 ++++     ++          ++          ++
+```
+
+To understand it better , run this 
+
+`rustc --explain E0106`
+
+Replace the above function with this
+
+```rust
+pub fn func_test<'r>(a: &'r str, b: &'r str) -> &'r str {
+    return b
+}
+```
+
+And use it as expected
+
+```rust
+func_test("a", "b")
+```

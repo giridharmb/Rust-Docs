@@ -803,9 +803,22 @@ fn main() {
             }
         },
     };
-}
 
-// error handling example-1
+    // ----- while loop | while true loop --------
+
+    let mut c = 0;
+
+    loop {
+        println!("c => {}", c);
+        c +=1;
+        if c >=10 {
+            break;
+        }
+    }
+
+} // -------------- fn main()
+
+// Error handling example-1
 
 fn read_data_from_file_v1() -> Result<String, io::Error> {
     let f = File::open("hello.txt");
