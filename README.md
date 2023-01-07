@@ -274,6 +274,8 @@ To understand it better , run this
 
 `rustc --explain E0106`
 
+To fix the issue, you'd declare a named lifetime and use the same lifetime for `a` or `b` and the return type:
+
 Replace the above function with this
 
 ```rust
