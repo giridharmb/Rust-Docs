@@ -121,8 +121,8 @@ Borrowing
 
 - borrowing lets us have multiple references to a single resource
 - a reference is also an object in rust
-- `mutable` references -> are moved
-- `immutable` references -> are copied
+- `mutable` references -> are `MOVED`
+- `immutable` references -> are `COPIED`
 
 <hr/>
 
@@ -161,10 +161,11 @@ fn main() {
 }
 ```
 
-Result Type
+Result Type : Is of type `enum`
 
 ```rust
 let mut my_input_string = String::new();
+
 println!("enter a number: ");
 
 io::stdout().flush().unwrap();
@@ -224,11 +225,13 @@ enum Result<T, E>
 Rust's named lifetimes
 
 ```
-Every reference in Rust has a lifetime, which is the scope for which that reference is valid. 
-Most of the time lifetimes are implicit and inferred, just like most of the time types are inferred. 
-Similarly to when we have to annotate types because multiple types are possible, there are cases 
-where the lifetimes of references could be related in a few different ways, so Rust needs us to 
-annotate the relationships using generic lifetime parameters so that it can make sure the actual 
+Every reference in Rust has a lifetime, which is the scope for which that 
+reference is valid. Most of the time lifetimes are implicit and inferred, 
+just like most of the time types are inferred. 
+Similarly to when we have to annotate types because multiple types are 
+possible, there are cases where the lifetimes of references could be related 
+in a few different ways, so Rust needs us to annotate the relationships 
+using generic lifetime parameters so that it can make sure the actual 
 references used at runtime will definitely be valid.
 
 Lifetime annotations don’t change how long any of the references involved live. 
