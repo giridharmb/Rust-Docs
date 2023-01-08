@@ -289,3 +289,69 @@ And use it as expected
 ```rust
 func_test("a", "b")
 ```
+
+#### Option
+
+The below code will not compile, because `id` can be anything apart from value of `1`
+
+```rust
+fn lookup_player(id: u32) -> String {
+    if id == 1 {
+        return "Giridhar Bhujanga".to_string()
+    }
+}
+```
+
+To fix this, we can use `Option`
+
+```rust
+fn lookup_player(id: u32) -> Option<String> {
+    if id == 1 {
+        let data = "Giridhar Bhujanga".to_string();
+        return Option::Some(data);
+    }
+    return Option::None;
+}
+```
+
+This function return signature : `lookup_player(id: u32) -> Option<String>` <br/>
+means that we either return some `String` or `None`.
+
+We can simplify it further by using `enum`:
+
+```rust
+fn lookup_player(id: u32) -> Option<String> {
+    use Option::Some;
+    use Option::None;
+
+    if id == 1 {
+        let data = "Giridhar Bhujanga".to_string();
+        return Some(data);
+    }
+    return None;
+}
+```
+
+Now we can use call the above function:
+
+```rust
+fn run_game() {
+    let player = match lookup_player(1) {
+        Some(p) => p,
+        None => return
+    };
+}
+```
+
+FYI : An `empty tuple` is `()`, is also called a `unit`.
+
+```rust
+fn run_game() -> Option<()> {
+    let player = lookup_player(1)?;
+    println!("Player : {}", player);
+    Some(())
+}
+```
+
+Note : `?` above, that is <br/>
+`lookup_player(1)?` : This will return `None`, If `lookup_player(1)` returns `None`.
