@@ -837,6 +837,36 @@ fn main() {
 
     println!("n : {}", n); // this line will print > "n : 15"
 
+    // --------- closure ----------
+
+    fn add_one_v1(x: u32) -> u32 {
+        x+1
+    }
+
+    let add_one_v2 = |x: u32| -> u32 {
+        x+1
+    }; // closure ends with a ';'
+
+    let v = add_one_v2(68);
+
+    println!("closure : v : {}", v);
+
+    // another example  of closure
+
+    let mut rect_list = [
+        Rectangle{width: 100, height: 200},
+        Rectangle{width: 55, height: 65},
+        Rectangle{width: 10, height: 85},
+    ];
+
+    // sort_by_key calls the closure multiple times
+    // therefore, this closure has `FnMut` trait.
+    // however, this does not capture, move or mute
+    // any of the values in the closure body.
+
+    rect_list.sort_by_key(|r| r.width);
+    println!("{:?}", rect_list);
+
 } // -------------- fn main()
 
 // Error handling example-1
