@@ -4,6 +4,24 @@ Please have a look the following file for code snippets/samples
 
 #### [src/main.rs](https://github.com/giridharmb/rust-app1/blob/master/src/main.rs)
 
+How To Create A New Cargo Project (Executable App) ?
+
+```bash
+cargo new test_app --bin
+```
+
+How To Run The Application ?
+
+```bash
+cargo run
+```
+
+How To Run The Unit Tests ?
+
+```bash
+cargo test
+```
+
 ```rust
 // In this print statement >
 println!("{:?}", my_data);
@@ -358,3 +376,107 @@ fn run_game() -> Option<()> {
 
 Note : `?` above, that is <br/>
 `lookup_player(1)?` : This will return `None`, If `lookup_player(1)` returns `None`.
+
+#### Error Handling
+
+Error Handling : Example-1
+
+```rust
+// Error Handling
+
+use std::fs::File;
+
+fn main() {
+    println!("this is an example of error handling");
+    let f = File::open("random.txt");
+
+    let f = match f {
+        Ok(file) => file,
+        Err(err) => panic!("there was an error opening the file : {:?}", err), 
+    };
+}
+```
+
+In the above example, there was an error and output of `cargo run` was
+
+```bash
+cargo run
+```
+
+```bash
+    Finished dev [unoptimized + debuginfo] target(s) in 0.19s
+     Running `target/debug/test_app`
+this is an example of error handling
+thread 'main' panicked at 'there was an error opening the file : Os { code: 2, kind: NotFound, message: "No such file or directory" }', src/main.rs:11:21
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+```bash
+RUST_BACKTRACE=1 cargo run
+```
+
+```bash
+this is an example of error handling
+thread 'main' panicked at 'there was an error opening the file : Os { code: 2, kind: NotFound, message: "No such file or directory" }', src/main.rs:11:21
+stack backtrace:
+   0: rust_begin_unwind
+             at /rustc/69f9c33d71c871fc16ac445211281c6e7a340943/library/std/src/panicking.rs:575:5
+   1: core::panicking::panic_fmt
+             at /rustc/69f9c33d71c871fc16ac445211281c6e7a340943/library/core/src/panicking.rs:65:14
+   2: test_app::main
+             at ./src/main.rs:11:21
+   3: core::ops::function::FnOnce::call_once
+             at /rustc/69f9c33d71c871fc16ac445211281c6e7a340943/library/core/src/ops/function.rs:251:5
+note: Some details are omitted, run with `RUST_BACKTRACE=full` for a verbose backtrace.
+```
+
+Error Handling : Example-2
+
+```rust
+// Error Handling
+
+use std::fs::File;
+use std::io::ErrorKind;
+
+fn main() {
+    println!("this is an example of error handling");
+    let f = File::open("random.txt");
+
+    let f = match f {
+        Ok(file) => file,
+        Err(error) => match error.Kind() {
+            // recover from the error and try to create the file
+            // also note, trying to create the file could also fail
+            ErrorKind::NotFound => match File::create("random.txt") {
+                Ok(fc) => fc, // just return fc if file could be created
+                Err(e) => panic!("there was a problem in trying to create the file : {:?}", e),
+            },
+            other_error => {
+                panic!("there was a different problem in opening the file : {:?}", other_error)
+            }
+        },
+    };
+}
+```
+
+Error Handling : Example-3
+
+```rust
+// Error Handling
+
+use std::fs::File;
+use std::io::ErrorKind;
+
+fn main() {
+    println!("this is an example of error handling");
+    let f = File::open("random.txt").unwrap_or_else(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            File::create("random.txt").unwrap_or_else(|error| {
+                panic!("could not create the file : {:?}", error);
+            }) // unwrap_or_else
+        } else {
+            panic!("could not open the file : {:?}", error);
+        }
+    }); //unwrap_or_else
+}
+```
