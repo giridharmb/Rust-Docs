@@ -332,7 +332,7 @@ fn lookup_player(id: u32) -> Option<String> {
 }
 ```
 
-Now we can use call the above function:
+Now we can call the above function `lookup_player`:
 
 ```rust
 fn run_game() {
