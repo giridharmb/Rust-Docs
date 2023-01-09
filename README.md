@@ -565,3 +565,98 @@ error : ip address validation failed : CustomError {
     err_msg: "there was an error in parsing the ipaddress",
 }
 ```
+
+Error Handling : Example-5 (Without Error)
+
+```rust
+use std::collections::HashMap;
+use reqwest::{Response, StatusCode};
+
+
+fn main() {
+    match get_current_date() {
+        Ok(date) => println!("We've time travelled to {} !", date),
+        Err(e) => eprintln!("Oh noes, we don't know which era we're in ! :( \n  {}", e),
+    }
+}
+
+fn get_current_date() -> Result<String, reqwest::Error> {
+    let url = "https://postman-echo.com/time/object";
+
+    let client = reqwest::blocking::Client::new();
+
+    let res = client.get(url).send();
+
+    let response = match res {
+        Ok(res) => res,
+        Err(err) => return Err(err),
+    };
+
+    let body = response.json::<HashMap<String, i32>>();
+
+    let json = match body {
+        Ok(json) => json,
+        Err(err) => return Err(err),
+    };
+
+    let date = json["years"].to_string();
+
+    Ok(date)
+}
+```
+
+Output of Example-5 (Without Error)
+
+```bash
+    Finished dev [unoptimized + debuginfo] target(s) in 0.31s
+     Running `target/debug/test_app_v2`
+We've time travelled to 2023 !
+```
+
+Error Handling : Example-5 (*With* Error , Invalid URL Passed)
+
+```rust
+use std::collections::HashMap;
+use reqwest::{Response, StatusCode};
+
+
+fn main() {
+    match get_current_date() {
+        Ok(date) => println!("We've time travelled to {} !", date),
+        Err(e) => eprintln!("Oh noes, we don't know which era we're in ! :( \n  {}", e),
+    }
+}
+
+fn get_current_date() -> Result<String, reqwest::Error> {
+    let url = "https://postman-echo.com/time/object-XXX";
+
+    let client = reqwest::blocking::Client::new();
+
+    let res = client.get(url).send();
+
+    let response = match res {
+        Ok(res) => res,
+        Err(err) => return Err(err),
+    };
+
+    let body = response.json::<HashMap<String, i32>>();
+
+    let json = match body {
+        Ok(json) => json,
+        Err(err) => return Err(err),
+    };
+
+    let date = json["years"].to_string();
+
+    Ok(date)
+}
+```
+
+Output of Example-5 (*With* Error , Invalid URL Passed)
+
+```bash
+    Finished dev [unoptimized + debuginfo] target(s) in 0.31s
+     Running `target/debug/test_app_v2`
+Oh noes, we don't know which era we're in ! :(
+  error decoding response body: EOF while parsing a value at line 1 column 0
+```
