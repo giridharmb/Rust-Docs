@@ -480,3 +480,88 @@ fn main() {
     }); //unwrap_or_else
 }
 ```
+
+Error Handling : Example-4
+
+```rust
+// Error Handling
+
+use std::net::{AddrParseError, IpAddr};
+use std::net::{Ipv4Addr};
+use std::str::FromStr;
+
+
+#[derive(Debug)]
+pub enum GenericError {
+    InvalidInput,
+}
+
+#[derive(Debug)]
+struct CustomError {
+    err_type: GenericError,
+    err_msg: String
+}
+
+pub type IpCheckResult = Result<bool, CustomError>;
+
+fn validate_ip_address(my_ip: &String) -> IpCheckResult {
+    let ip_addr = Ipv4Addr::from_str(my_ip);
+    let resp = match ip_addr {
+        Ok(ip) => {
+            println!("ip-address : {} , is valid !", my_ip);
+            true
+        },
+        Err(e) => {
+            println!("ip-address : {} , is *not* valid !", my_ip);
+            let custom_err = CustomError{
+                err_msg: String::from("there was an error in parsing the ipaddress"),
+                err_type: GenericError::InvalidInput
+            };
+            return Err(custom_err)
+        },
+    };
+    Ok(resp)
+}
+
+fn main() {
+    println!("this is an example of error handling");
+
+    // valid input
+    let my_str = String::from("127.0.0.77");
+    let _ = match validate_ip_address(&my_str) {
+        Ok(data) => {
+            println!("success : {:?}", data)
+        }
+        Err(e) => {
+            println!("error : ip address validation failed : {:#?}", e)
+        }
+    };
+
+    // invalid input
+    let my_str = String::from("127.0.0.777");
+    let _ = match validate_ip_address(&my_str) {
+        Ok(data) => {
+            println!("success : {:?}", data)
+        }
+        Err(e) => {
+            println!("error : ip address validation failed : {:#?}", e)
+        }
+    };
+}
+```
+
+Output of Example-4
+
+```bash
+cargo run
+```
+```bash
+this is an example of error handling
+ip-address : 127.0.0.77 , is valid !
+success : true
+ip-address : 127.0.0.777 , is *not* valid !
+error : ip address validation failed : CustomError {
+    err_type: InvalidInput,
+    err_msg: "there was an error in parsing the ipaddress",
+}
+```
