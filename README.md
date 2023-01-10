@@ -666,12 +666,12 @@ Oh noes, we don't know which era we're in ! :(
 Rust avoids the billion dollar mistake of including nulls in the language. <br/>
 Instead, we can represent a value that might or might not exist with the Option type.<br/>
 This is similar to Java 8 Optional or Haskell’s Maybe. There is plenty of material out<br/>
-there detailing why an Option type is better than null.<br/><br/>
+there detailing why an Option type is better than null.<br/>
 
 In Rust, `Option<T>` is an enum that can either be `None` = `(no value present)` <br/>
-or `Some(x)` = `(some value present)`.<br/><br/>
+or `Some(x)` = `(some value present)`.<br/>
 
-Please see the `// comments` in the code below.<br/><br/>
+Please see the `// comments` in the code below.<br/>
 
 ```rust
 struct User {
