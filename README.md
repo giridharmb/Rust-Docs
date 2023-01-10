@@ -875,7 +875,7 @@ thread 'main' panicked at '[1] (Please sell the car) Panic*', src/main.rs:18:9
 note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
 ```
 
-We can slightly modify the error handling this way and avoid program crashing via panic
+We can slightly modify the `error handling` this way and avoid program `crashing` via `panic`
 
 ```rust
 use std::error::Error;
