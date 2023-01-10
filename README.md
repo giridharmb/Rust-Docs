@@ -957,3 +957,18 @@ Output
 [2] Hey Buddy, your car is fine , it only has 20000 miles.
 oops : (s3) there was an error : [1] (Please sell the car) Panic*
 ```
+
+Basically
+
+```rust
+fn work_with_text() -> Result<(), Box<dyn std::error::Error>> {
+    let content = std::fs::read_to_string("text.txt")?;
+    // do something with content that may cause another type of error (rusqlite error)
+    Ok(())
+}
+```
+
+Having a `Box<dyn std::error::Error>` also allows you to return a wide variety of errors<br/>
+from your function since most error types can be automatically converted<br/>
+into a `Box<dyn std::error::Error>` via the `?` operator.
+
