@@ -735,4 +735,79 @@ user name : Sumeet Singh
 user ( Sumeet Singh ) has no car !
 ```
 
+#### Result & Option (Bubble Up Errors)
 
+In the below code:
+
+`print_user_details()` -> Returns a Result < `empty tuple` & `error` >
+
+`u.car.as_ref().ok_or` -> This returns an error, in case (`None`) is the value for `car`
+
+As per documentation in Rust:
+
+```
+ok_or : Transforms the Option<T> into a Result<T, E>, mapping Some(v) to Ok(v) and None to Err(err)
+```
+
+```rust
+use std::error::Error;
+
+struct User {
+    name: String,
+    car: Option<String>,
+}
+
+fn print_user_details(u: &User) -> Result<(),Box<dyn std::error::Error>>{
+    println!("user name : {}", u.name);
+
+    let user_car = match u.car.as_ref().ok_or("problem : could not get car details") {
+        Ok(_) => {}
+        Err(e) => {
+            return Err(Box::try_from(String::from("( yikes : could not find car )")).unwrap());
+        }
+    };
+
+    Ok(()) // if there was no error above, then code reaches here
+
+}
+
+fn main() {
+    println!("Usage of Option");
+
+    let user1 = User {
+        name: String::from("Giridhar Bhujanga"),
+        car: Some(String::from("Audi S4")),
+    };
+
+    let user2 = User {
+        name: String::from("Sumeet Singh"),
+        car: None, // ---> Important ! this is None
+    };
+
+    let result1 = match print_user_details(&user1) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("[ oops ] : there was an error while getting user details : {}", e);
+        }
+    };
+
+    let result2 = match print_user_details(&user2) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("[ oops ] : there was an error while getting user details : {}", e);
+        }
+    };
+
+}
+```
+
+Output
+
+```bash
+    Finished dev [unoptimized + debuginfo] target(s) in 0.11s
+     Running `target/debug/test_option`
+Usage of Option
+user name : Giridhar Bhujanga
+user name : Sumeet Singh
+[ oops ] : there was an error while getting user details : ( yikes : could not find car )
+```
