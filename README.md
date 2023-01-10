@@ -811,3 +811,149 @@ user name : Giridhar Bhujanga
 user name : Sumeet Singh
 [ oops ] : there was an error while getting user details : ( yikes : could not find car )
 ```
+
+Another Use Case of Error Handling
+
+```rust
+fn describe_car(my_car: Option<&str>) {
+    // Specify a course of action for each case.
+    match my_car {
+        Some("bmw") => println!("1> oh damn, this is sporty and a drivers car !"),
+        Some("audi") => println!("2> sorry to hear this, I know it breaks down a lot"),
+        Some("porsche") => println!("3> omg ! you must be rich to own this car for daily use !"),
+        Some(other) => println!("4> hey, you have this *{}* ? I don't know much about this :(", other),
+        None => println!("5> IS THIS EVEN A CAR ?"),
+    }
+}
+
+fn does_it_need_servicing(mileage: Option<i32>) {
+
+    // `unwrap` returns a `panic` when it receives a `None`.
+    let car_miles = mileage.unwrap();
+
+    if car_miles >= 150000 {
+        panic!("[1] (Please sell the car) Panic*");
+    } else {
+        println!("[2] Hey Buddy, your car is fine , it only has {} miles.", car_miles);
+    }
+}
+
+fn main() {
+    let car1 = Some("bmw");
+    let car2 = Some("audi");
+    let car3 = Some("porsche");
+    let car4 = Some("toyota");
+    let car5 = None;
+
+    describe_car(car1);
+    describe_car(car2);
+    describe_car(car3);
+    describe_car(car4);
+    describe_car(car5);
+
+    let car_1_mileage = Some(10000);
+    let car_2_mileage = Some(20000);
+    let car_3_mileage = Some(250000);
+
+    does_it_need_servicing(car_1_mileage);
+    does_it_need_servicing(car_2_mileage);
+    does_it_need_servicing(car_3_mileage);
+}
+```
+
+The above program panics. The Output looks like this
+
+```bash
+1> oh damn, this is sporty and a drivers car !
+2> sorry to hear this, I know it breaks down a lot
+3> omg ! you must be rich to own this car for daily use !
+4> hey, you have this *toyota* ? I don't know much about this :(
+5> IS THIS EVEN A CAR ?
+[2] Hey Buddy, your car is fine , it only has 10000 miles.
+[2] Hey Buddy, your car is fine , it only has 20000 miles.
+thread 'main' panicked at '[1] (Please sell the car) Panic*', src/main.rs:18:9
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+```
+
+We can slightly modify the error handling this way and avoid program crashing via panic
+
+```rust
+use std::error::Error;
+
+fn describe_car(my_car: Option<&str>) {
+    // Specify a course of action for each case.
+    match my_car {
+        Some("bmw") => println!("1> oh damn, this is sporty and a drivers car !"),
+        Some("audi") => println!("2> sorry to hear this, I know it breaks down a lot"),
+        Some("porsche") => println!("3> omg ! you must be rich to own this car for daily use !"),
+        Some(other) => println!("4> hey, you have this *{}* ? I don't know much about this :(", other),
+        None => println!("5> IS THIS EVEN A CAR ?"),
+    }
+}
+
+fn does_it_need_servicing(mileage: Option<i32>) -> Result<(), Box<dyn std::error::Error>> {
+
+    // `unwrap` returns a `panic` when it receives a `None`.
+    let car_miles = mileage.unwrap();
+
+    if car_miles >= 150000 {
+        return Err(Box::try_from("[1] (Please sell the car) Panic*").unwrap())
+    } else {
+        println!("[2] Hey Buddy, your car is fine , it only has {} miles.", car_miles);
+    }
+
+    Ok(())
+}
+
+fn main() {
+    let car1 = Some("bmw");
+    let car2 = Some("audi");
+    let car3 = Some("porsche");
+    let car4 = Some("toyota");
+    let car5 = None;
+
+    describe_car(car1);
+    describe_car(car2);
+    describe_car(car3);
+    describe_car(car4);
+    describe_car(car5);
+
+    let car_1_mileage = Some(10000);
+    let car_2_mileage = Some(20000);
+    let car_3_mileage = Some(250000);
+
+    let s1 = match does_it_need_servicing(car_1_mileage) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("oops : (s1) there was an error : {}", e)
+        }
+    };
+
+    let s2 = match does_it_need_servicing(car_2_mileage) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("oops : (s2) there was an error : {}", e)
+        }
+    };
+
+    let s3 = match does_it_need_servicing(car_3_mileage) {
+        Ok(_) => {}
+        Err(e) => {
+            println!("oops : (s3) there was an error : {}", e)
+        }
+    };
+}
+```
+
+Output
+
+```bash
+1> oh damn, this is sporty and a drivers car !
+2> sorry to hear this, I know it breaks down a lot
+3> omg ! you must be rich to own this car for daily use !
+4> hey, you have this *toyota* ? I don't know much about this :(
+5> IS THIS EVEN A CAR ?
+[2] Hey Buddy, your car is fine , it only has 10000 miles.
+[2] Hey Buddy, your car is fine , it only has 20000 miles.
+oops : (s3) there was an error : [1] (Please sell the car) Panic*
+```
