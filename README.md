@@ -958,7 +958,7 @@ Output
 oops : (s3) there was an error : [1] (Please sell the car) Panic*
 ```
 
-Basically
+Basically, If You Have A Look At This Snippet Below:
 
 ```rust
 fn work_with_text() -> Result<(), Box<dyn std::error::Error>> {
