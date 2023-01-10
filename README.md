@@ -660,3 +660,79 @@ Output of Example-5 (*With* Error , Invalid URL Passed)
 Oh noes, we don't know which era we're in ! :(
   error decoding response body: EOF while parsing a value at line 1 column 0
 ```
+
+#### Option
+
+Rust avoids the billion dollar mistake of including nulls in the language. <br/>
+Instead, we can represent a value that might or might not exist with the Option type.<br/>
+This is similar to Java 8 Optional or Haskell’s Maybe. There is plenty of material out<br/>
+there detailing why an Option type is better than null.<br/><br/>
+
+In Rust, `Option<T>` is an enum that can either be `None` = `(no value present)` <br/>
+or `Some(x)` = `(some value present)`.<br/><br/>
+
+Please see the `// comments` in the code below.<br/><br/>
+
+```rust
+struct User {
+    name: String,
+    car: Option<String>,
+}
+
+fn print_user_details(u: &User) {
+    println!("user name : {}", u.name);
+
+    // Important !
+
+    // In the above struct (User), value for car is Option<String>
+    // So, to avoid panic, we have to check if the value for car is
+    // Some(x) or None , as show below in match
+
+    match &u.car {
+        None => {
+            println!("user ( {} ) has no car !", u.name);
+        }
+        Some(d) => {
+            println!("user car : {}", d);
+        }
+    }
+
+}
+
+fn main() {
+    println!("Usage of Option");
+
+    let user1 = User {
+        name: String::from("Giridhar Bhujanga"),
+        car: Some(String::from("Audi S4")),
+    };
+
+    let user2 = User {
+        name: String::from("Sumeet Singh"),
+        car: None, // ---> Important ! This is None for user2
+    };
+
+    print_user_details(&user1);
+    print_user_details(&user2);
+
+}
+```
+
+Output
+
+```bash
+cargo run
+```
+
+```bash
+   Compiling test_option v0.1.0 (/Users/giri/git/rust/test_option)
+    Finished dev [unoptimized + debuginfo] target(s) in 0.10s
+     Running `target/debug/test_option`
+Usage of Option
+user name : Giridhar Bhujanga
+user car : Audi S4
+user name : Sumeet Singh
+user ( Sumeet Singh ) has no car !
+```
+
+
