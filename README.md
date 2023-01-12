@@ -972,3 +972,86 @@ Having a `Box<dyn std::error::Error>` also allows you to return a wide variety o
 from your function since most error types can be automatically converted<br/>
 into a `Box<dyn std::error::Error>` via the `?` operator.
 
+#### Rust Threading & Usage of `move` keyword
+
+```rust
+use std::thread;
+
+fn main() {
+    let v = vec![1,2,3];
+
+    let handle = thread::spawn(move || {
+        // due to 'move' above
+        // the below line will have complete ownership of 'v'
+        println!("vector : {:?}", v);
+    });
+
+    // due to 'move' above
+    // this will throw error in the below print statement
+    println!("{:?}", v);
+
+    let join_result = match handle.join() {
+        Ok(_) => {
+            println!("thread successfully joined.");
+        }
+        Err(_) => {
+            println!("failed to join the thread to the main thread");
+        }
+    };
+}
+```
+
+The above program will throw the below error because we have used `move` (which is actually needed)
+
+```bash
+|     let v = vec![1,2,3];
+|         - move occurs because `v` has type `Vec<i32>`, which does not implement the `Copy` trait
+|
+|     let handle = thread::spawn(move || {
+|                                ------- value moved into closure here
+|         println!("vector : {:?}", v);
+|                                   - variable moved due to use in closure
+| 
+|     println!("{:?}", v);
+|                      ^ value borrowed here after move
+```
+
+Threading Example
+
+```rust
+use std::thread;
+
+fn main() {
+    println!("rust threading !");
+
+    let mut c = vec![];
+
+    // move keyword allows the closure
+    // to use data from one thread to another thread
+    for i in 0..10 {
+        c.push(thread::spawn(move || {
+            println!("thread number {}", i);
+        }));
+    }
+
+    for my_thread in c {
+        my_thread.join().expect("failed to join the thread to the main thread");
+    }
+}
+```
+
+Output
+
+```bash
+rust threading !
+thread number 1
+thread number 0
+thread number 2
+thread number 3
+thread number 4
+thread number 5
+thread number 6
+thread number 7
+thread number 8
+thread number 9
+```
