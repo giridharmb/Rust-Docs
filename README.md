@@ -1058,6 +1058,8 @@ thread number 9
 
 Async Functions
 
+`Cargo.toml`
+
 ```toml
 [package]
 name = "async_functions"
@@ -1071,6 +1073,8 @@ simple_logger = { version = "4.0.0", features = ["colors", "timestamps"] }
 tokio = { version = "1.24.1", features = ["full"] }
 log = { version = "0.4", features = ["std", "serde"] }
 ```
+
+Code
 
 ```rust
 use std::{thread, time};
