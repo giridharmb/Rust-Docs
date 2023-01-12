@@ -1135,3 +1135,118 @@ async function test !
 2023-01-12T20:10:46.788Z DEBUG [async_functions] my_function() is done.
 2023-01-12T20:10:46.788Z DEBUG [async_functions] <AFTER AWAIT>
 ```
+
+#### Async Functions : Tasks (Green Threads)
+
+To run `async` code concurrently, we can use `tokio-tasks`.
+
+A `task` is a `light weight` , `non blocking` unit of execution.
+
+It is a `green thread` (similar to a go-routine).
+
+It allows top level `Futures` to be executed `concurrently`.
+
+Note :
+By default, TOKIO uses thread pool to execute tasks
+We can tell TOKIO to use 1 thread by changing this
+
+`#[tokio::main]`
+to this
+`#[tokio::main(flavor = "current_thread")]`
+
+This will make TOKIO to execute tasks concurrently - using time slicing instead of threads.
+
+Note : to communicate between tasks,
+We have to use message passing through a channel
+Or
+Shared state through a mutex
+
+Unlike threads, `async` code uses `cooperative scheduling`, instead of `preemptive scheduling`.
+
+```rust
+use std::{thread, time};
+use simple_logger::SimpleLogger;
+use log::{info, warn, debug, error};
+use tokio::time::sleep;
+use std::time::Duration;
+
+
+fn main() {
+    println!("async function test !");
+    SimpleLogger::new().init().unwrap();
+    execute_async_function()
+}
+
+// Note :
+// By default, TOKIO uses thread pool to execute tasks
+// We can tell TOKIO to use 1 thread by changing this
+// #[tokio::main]
+// to this
+// #[tokio::main(flavor = "current_thread")]
+// this will make TOKIO to execute tasks concurrently - using time slicing
+// instead of threads
+
+// Note : to communicate between tasks >
+// we have to use message passing through a channel
+// Or
+// shared state through a mutex
+
+// Unlike threads, async code uses cooperative scheduling, instead of preemptive scheduling
+
+#[tokio::main]
+async fn execute_async_function() {
+
+    log::debug!("<START>");
+
+    let mut handles = vec![]; // task handles
+
+    for i in 0..2 {
+        let handle = tokio::spawn(async move {
+            my_function(i).await;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.await.unwrap();
+    }
+    log::debug!("<END>");
+}
+
+async fn my_function(i: i32) {
+    log::debug!("[{i}] my_function() ...");
+
+    let s1 = read_from_database().await;
+    log::debug!("[{i}] s1 : {}", s1);
+
+    let s2 = read_from_database().await;
+    log::debug!("[{i}] s2 : {}", s2);
+
+    log::debug!("[{i}] my_function() is done.")
+
+}
+
+// Note : we should not be putting CPU intensive operations on async function
+
+async fn read_from_database() -> String {
+    sleep(Duration::from_millis(3000)).await;
+    return "DB Data".to_owned();
+}
+```
+
+Output
+
+```bash
+async function test !
+2023-01-12T21:30:05.512Z TRACE [mio::poll] registering event source with poller: token=Token(2147483649), interests=READABLE
+2023-01-12T21:30:05.513Z DEBUG [async_functions] <START>
+2023-01-12T21:30:05.513Z DEBUG [async_functions] [0] my_function() ...
+2023-01-12T21:30:05.513Z DEBUG [async_functions] [1] my_function() ...
+2023-01-12T21:30:08.516Z DEBUG [async_functions] [1] s1 : DB Data
+2023-01-12T21:30:08.516Z DEBUG [async_functions] [0] s1 : DB Data
+2023-01-12T21:30:11.519Z DEBUG [async_functions] [0] s2 : DB Data
+2023-01-12T21:30:11.519Z DEBUG [async_functions] [0] my_function() is done.
+2023-01-12T21:30:11.519Z DEBUG [async_functions] [1] s2 : DB Data
+2023-01-12T21:30:11.519Z DEBUG [async_functions] [1] my_function() is done.
+2023-01-12T21:30:11.520Z DEBUG [async_functions] <END>
+```
