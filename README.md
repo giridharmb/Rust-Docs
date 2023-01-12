@@ -1147,19 +1147,19 @@ It is a `green thread` (similar to a go-routine).
 It allows top level `Futures` to be executed `concurrently`.
 
 Note :
-By default, TOKIO uses thread pool to execute tasks
-We can tell TOKIO to use 1 thread by changing this
+By default, TOKIO uses `thread pool` to execute tasks.
+We can tell TOKIO to use one thread by changing this
 
 `#[tokio::main]`
 to this
 `#[tokio::main(flavor = "current_thread")]`
 
-This will make TOKIO to execute tasks concurrently - using time slicing instead of threads.
+This will make TOKIO to execute `tasks` `concurrently` - using `time slicing` instead of `threads`.
 
 Note : to communicate between tasks,
-We have to use message passing through a channel
+We have to use `message passing` through a `channel`
 Or
-Shared state through a mutex
+`Shared state` through a `mutex`.
 
 Unlike threads, `async` code uses `cooperative scheduling`, instead of `preemptive scheduling`.
 
