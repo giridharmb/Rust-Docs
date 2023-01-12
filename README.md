@@ -1055,3 +1055,79 @@ thread number 7
 thread number 8
 thread number 9
 ```
+
+Async Functions
+
+```toml
+[package]
+name = "async_functions"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+simple_logger = { version = "4.0.0", features = ["colors", "timestamps"] }
+tokio = { version = "1.24.1", features = ["full"] }
+log = { version = "0.4", features = ["std", "serde"] }
+```
+
+```rust
+use std::{thread, time};
+use simple_logger::SimpleLogger;
+use log::{info, warn, debug, error};
+
+
+fn main() {
+    println!("async function test !");
+    SimpleLogger::new().init().unwrap();
+    execute_async_function()
+}
+
+#[tokio::main]
+async fn execute_async_function() {
+    log::debug!("<START>");
+    let my_future = my_function();
+    log::debug!("<BEFORE AWAIT>");
+    my_future.await;
+    log::debug!("<AFTER AWAIT>");
+}
+
+async fn my_function() {
+    log::debug!("my_function() ...");
+
+    let now = time::Instant::now();
+
+    let my_sleep_duration = time::Duration::from_millis(3000);
+
+    thread::sleep(my_sleep_duration);
+    let s1 = read_from_database().await;
+    log::debug!("s1 : {}", s1);
+
+    thread::sleep(my_sleep_duration);
+    let s2 = read_from_database().await;
+    log::debug!("s2 : {}", s2);
+
+    log::debug!("my_function() is done.")
+
+}
+
+
+async fn read_from_database() -> String {
+    return "DB Data".to_owned();
+}
+```
+
+Output (Make a note of the timestamps, as sleep is used in the above code)
+
+```bash
+async function test !
+2023-01-12T20:10:40.780Z TRACE [mio::poll] registering event source with poller: token=Token(2147483649), interests=READABLE
+2023-01-12T20:10:40.781Z DEBUG [async_functions] <START>
+2023-01-12T20:10:40.781Z DEBUG [async_functions] <BEFORE AWAIT>
+2023-01-12T20:10:40.781Z DEBUG [async_functions] my_function() ...
+2023-01-12T20:10:43.787Z DEBUG [async_functions] s1 : DB Data
+2023-01-12T20:10:46.788Z DEBUG [async_functions] s2 : DB Data
+2023-01-12T20:10:46.788Z DEBUG [async_functions] my_function() is done.
+2023-01-12T20:10:46.788Z DEBUG [async_functions] <AFTER AWAIT>
+```
