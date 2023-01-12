@@ -1250,3 +1250,94 @@ async function test !
 2023-01-12T21:30:11.519Z DEBUG [async_functions] [1] my_function() is done.
 2023-01-12T21:30:11.520Z DEBUG [async_functions] <END>
 ```
+
+Channels (Sender and Receiver) With Multithreading
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "multi_threading"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+log = { version = "0.4", features = ["std", "serde"] }
+simple_logger = { version = "4.0.0", features = ["colors", "timestamps"] }
+```
+
+```rust
+use std::thread;
+use std::sync::mpsc;
+use std::time::Duration;
+use simple_logger::SimpleLogger;
+
+fn main() {
+    println!("rust channels !");
+    SimpleLogger::new().init().unwrap();
+    let (tx, rx) = mpsc::channel();
+
+    log::debug!("| START |");
+
+    log::debug!("t1 starting...");
+    let t1= thread::spawn(move || {
+        //
+        for i in 0..10 {
+            thread::sleep(Duration::from_millis(1000));
+            log::debug!("tx | sending data {}", i);
+            tx.send(i).unwrap();
+        }
+    });
+    log::debug!("t1 started !");
+
+    log::debug!("t2 starting...");
+    let t2 = thread::spawn(move || {
+        for data in &rx {
+            log::debug!("rx | received data : {}", data);
+        }
+    });
+    log::debug!("t2 started !");
+
+    t1.join().expect("could not join the thread t1 to main thread");
+    t2.join().expect("could not join the thread t2 to main thread");
+
+    log::debug!("| END |");
+    println!("done processing tx (transmitter) & rx (receiver).")
+
+}
+```
+
+Output
+
+```bash
+rust channels !
+2023-01-12T22:57:06.247Z DEBUG [multi_threading] | START |
+2023-01-12T22:57:06.247Z DEBUG [multi_threading] t1 starting...
+2023-01-12T22:57:06.247Z DEBUG [multi_threading] t1 started !
+2023-01-12T22:57:06.247Z DEBUG [multi_threading] t2 starting...
+2023-01-12T22:57:06.247Z DEBUG [multi_threading] t2 started !
+2023-01-12T22:57:07.252Z DEBUG [multi_threading] tx | sending data 0
+2023-01-12T22:57:07.252Z DEBUG [multi_threading] rx | received data : 0
+2023-01-12T22:57:08.258Z DEBUG [multi_threading] tx | sending data 1
+2023-01-12T22:57:08.258Z DEBUG [multi_threading] rx | received data : 1
+2023-01-12T22:57:09.262Z DEBUG [multi_threading] tx | sending data 2
+2023-01-12T22:57:09.262Z DEBUG [multi_threading] rx | received data : 2
+2023-01-12T22:57:10.268Z DEBUG [multi_threading] tx | sending data 3
+2023-01-12T22:57:10.268Z DEBUG [multi_threading] rx | received data : 3
+2023-01-12T22:57:11.270Z DEBUG [multi_threading] tx | sending data 4
+2023-01-12T22:57:11.271Z DEBUG [multi_threading] rx | received data : 4
+2023-01-12T22:57:12.276Z DEBUG [multi_threading] tx | sending data 5
+2023-01-12T22:57:12.276Z DEBUG [multi_threading] rx | received data : 5
+2023-01-12T22:57:13.279Z DEBUG [multi_threading] tx | sending data 6
+2023-01-12T22:57:13.279Z DEBUG [multi_threading] rx | received data : 6
+2023-01-12T22:57:14.284Z DEBUG [multi_threading] tx | sending data 7
+2023-01-12T22:57:14.284Z DEBUG [multi_threading] rx | received data : 7
+2023-01-12T22:57:15.287Z DEBUG [multi_threading] tx | sending data 8
+2023-01-12T22:57:15.287Z DEBUG [multi_threading] rx | received data : 8
+2023-01-12T22:57:16.292Z DEBUG [multi_threading] tx | sending data 9
+2023-01-12T22:57:16.292Z DEBUG [multi_threading] rx | received data : 9
+2023-01-12T22:57:16.295Z DEBUG [multi_threading] | END |
+done processing tx (transmitter) & rx (receiver).
+```
