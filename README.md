@@ -1346,6 +1346,22 @@ done processing tx (transmitter) & rx (receiver).
 
 Note : By default, the thread pool has a size equal to the number of logical CPUs of the machine.
 
+`Cargo.toml`
+
+```toml
+[package]
+name = "worker_pool"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+rayon = "1.6.1"
+sha256 = "1.1.1"
+```
+
 ```rust
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
