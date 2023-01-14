@@ -1341,3 +1341,88 @@ rust channels !
 2023-01-12T22:57:16.295Z DEBUG [multi_threading] | END |
 done processing tx (transmitter) & rx (receiver).
 ```
+
+#### Worker Pool
+
+```rust
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use std::time::Duration;
+use rand::{distributions::Alphanumeric};
+use sha256::digest;
+
+fn compute_job(my_input: String) -> String {
+    std::thread::sleep(Duration::from_millis(1000));
+    let val = digest(my_input); // this will calcuate sha256 of given input (my_input)
+    return val;
+}
+
+fn process_result(my_result: String) {
+    println!("sha256 : {}", my_result);
+}
+
+fn generate_random_string() -> String {
+    let s: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(9)
+        .map(char::from)
+        .collect();
+    return s;
+}
+
+fn generate_jobs(number_of_inputs: i32) -> Vec<String> {
+    let mut jobs = vec![];
+    for i in 0..number_of_inputs {
+        let my_rand_str = generate_random_string();
+        jobs.push(my_rand_str);
+    }
+    return jobs;
+}
+
+fn main() {
+    let mut my_jobs = generate_jobs(30);
+
+    println!("my_jobs : {:?}", my_jobs);
+
+    my_jobs.into_par_iter()
+        .map(compute_job)
+        .for_each(process_result);
+
+}
+```
+
+Output
+
+```bash
+my_jobs : ["uJBjhL1FK", "EaslDWXWi", "FcPD4fVGY", "6GAc15IGM", "rIRcrfKlj", "uUKBVMrgU", "iRT26258z", "l59Njh4KC", "kL2IHssph", "DPInKHZGv", "nFOYEQ1Y5", "5Sq8tGH20", "a9V7bQEsq", "zIJAPrhEH", "AqfuQBxk5", "xujodgTYr", "4kZ4vA7TY", "evHkQgOqa", "WTYfmOuGM", "E6xBM9HQm", "q4nkmA1eQ", "r1FlON9Z0", "MG3zr3944", "wY3wQHs6g", "QsfTKOpuD", "NKo5QXI9n", "CE8PeKKdE", "tEvVP6INb", "em5Es3BXx", "4D5hzuMi0"]
+sha256 : 478b13673b38d95669ec20758168f85fc8eab62a6269af57820441c5541c7f81
+sha256 : 1a6a99cc6a319ee9ae418db8ecc1c8d68e861111e9b2bbbb9ed5c204b9834656
+sha256 : f7fa1ad6bd2ce721a015777b2c89ca248b3763d2f755e787bd88cf23e447a0a8
+sha256 : b3df070dc24dde5fb45958ebabdf6c801ff47d093d40d120d91340c14a69ded2
+sha256 : 0c9b3cf09b1896c06cc598af7d466cec701b50dbc1e2c79f2e24c9e2e8e1f23b
+sha256 : e6913feb6658dc987af882376412d0d4f4eb141a8f5c5142784f83c2d94c55e4
+sha256 : dd9f0b3a156f4fbe66b2896ce233b9dd51832cd3f2620693d7be0ab6b335149d
+sha256 : 0e31478dfc7b6deecc067ae0b966256f6149257316b7c0c9f39d9cff7a0b32e5
+sha256 : c3887f280f8912bad998b4b26ab9d34ccf50b9eaead44eb898b25df566f6562e
+sha256 : c3c2690850b758e4ed8d92295cde689ad2a6b44535d66a6d0300ba4a2ce2868b
+sha256 : 6eddaf7b5e882bcb064f93027b6b672f7b7af982edd2818c92ba671df5be39f8
+sha256 : 09f093bfe7acc2ed1b25517436f0cbf5a559d39c85a673421bfa3d94d3844e40
+sha256 : db535aad5fccb36f6eeea8371ad8f5943c6f731e9eb60d0aa61c801b526dda1f
+sha256 : 6fac7a6e65e03e905faf68d24d7c8d087131293149a92dfe18aacfcdc223eb5d
+sha256 : 6a151da389c8dce46431052a25f65c2af9429488e166b3366bf27bcfc6f17ace
+sha256 : 3a5ee44e6565c0c9203946b6a0f8c9411b2015ecdb7ee5b91503ef2d900f2796
+sha256 : 49c217555674ba87a183877735440e2053b5dc0b61ce25aeafe33260297bed07
+sha256 : 47da2dfc12cd77039c5e632a0b5a0ef57fcb6cbf10a8894a1e89819aef742714
+sha256 : e8b7b1817c454adee627ffc127a75efdd03adf3a67cdad179215aeed1d74b538
+sha256 : 9d21a645f4544205150323bdc5175c1bf870b3c7005d2904035928ad128419dd
+sha256 : 5f86acf3e41f228a05c8aa4c18328beb3a12cbddebb2bbde7ebb87f493b87559
+sha256 : ba8ad379772aeb150d476980e646f811e5dba69efa0d7e21522df732fca4ff59
+sha256 : 89f6fc8b96aa12822e180c98504256468d2df020b2d48f54db2b65847047dd66
+sha256 : b0cf3e1d355fc02131d07ac098e3795df2eaa29b02354f1ec7586ffb62cada68
+sha256 : c25e181f50c4eb00b8c141131842bfdd720447eadf0f49813182ed3166d25564
+sha256 : c4ef565821c862ca84ab0b3bcddd5598b6089f19ba5d89e89d16c0ca76bbe18d
+sha256 : 0d3cda1809c2320052c8bb11901007501384530325d6795a75c16ca0efc3cc08
+sha256 : 482e97d2f29eea78231442d622d0a97901000c083101c9760229065f1a5dcbca
+sha256 : 608a3da14c19db267d24514b80b432a5cdf8c28daad94bcbbbca460d9d743d93
+sha256 : c3b734502da38a5cf47abd565208e44b0b2903f5cdd817f0393bcbf2afb8c765
+```
