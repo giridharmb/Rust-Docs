@@ -1344,6 +1344,8 @@ done processing tx (transmitter) & rx (receiver).
 
 #### Worker Pool
 
+Note : By default, the thread pool has a size equal to the number of logical CPUs of the machine.
+
 ```rust
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
