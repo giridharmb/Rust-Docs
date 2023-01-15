@@ -1444,3 +1444,224 @@ sha256 : 482e97d2f29eea78231442d622d0a97901000c083101c9760229065f1a5dcbca
 sha256 : 608a3da14c19db267d24514b80b432a5cdf8c28daad94bcbbbca460d9d743d93
 sha256 : c3b734502da38a5cf47abd565208e44b0b2903f5cdd817f0393bcbf2afb8c765
 ```
+
+Worker Pool : Returning Tuple
+
+The below program will calculate sha256 of a given string & return both sha256 & epoch time at which sha256 was calculated.
+
+Also, we are collecting the results (output) of worker pool jobs using `.collect()` : The results are in the same order in which inputs were sent.
+
+```rust
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use std::time::Duration;
+use rand::{distributions::Alphanumeric};
+use sha256::digest;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn get_epoch_ms() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+}
+
+fn compute_job(my_input: String) -> (String, f64) {
+    let mut range = rand::thread_rng();
+    let random_sleep_secs = range.gen_range(1.0..3.0);
+    std::thread::sleep(Duration::from_secs_f64(random_sleep_secs));
+    let sha_256_value = digest(my_input.as_str()); // this will calcuate sha256 of given input (my_input)
+    let epoch_time = get_epoch_ms();
+    println!("compute_job() : my_input : {} | sha_256_value : {} , epoch_time : {}", my_input, sha_256_value, epoch_time);
+    return (sha_256_value, epoch_time)
+}
+
+fn generate_random_string() -> String {
+    let s: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(9)
+        .map(char::from)
+        .collect();
+    return s;
+}
+
+fn generate_jobs(number_of_inputs: i32) -> Vec<String> {
+    let mut jobs = vec![];
+    for i in 0..number_of_inputs {
+        let my_rand_str = generate_random_string();
+        jobs.push(my_rand_str);
+    }
+    return jobs;
+}
+
+fn main() {
+    let mut my_jobs = generate_jobs(30);
+
+    println!("my_jobs : {:?}", my_jobs);
+
+    let results: Vec<(String, f64)> = my_jobs.clone().into_par_iter()
+        .map(compute_job)
+        .collect();
+
+    println!("results : {:#?}", results);
+}
+```
+
+Output
+
+```bash
+my_jobs : ["zJ91dbOAv", "6rr5Mb1Gv", "XYJCnwVsM", "ffg5KfRVe", "1V6Ch08zs", "nKhTvgrqJ", "CLz0oFYDb", "aubjor5Gg", "uICIgQ75z", "u83dW6PUr", "t61FtzRN9", "PJ6pIJV44", "OmB2WMYu6", "VeqyQKtQD", "uFF7lvidh", "cG7YOYwS1", "42K4i17vv", "oOtA9Tzt4", "sCvBrvksx", "LOQ6fLMV5", "ZQyeVn7yT", "mnEsMZ3A0", "pMDkrLOan", "C8AD9VMbN", "0AuB45Lbd", "u7Rx3Jp1B", "YcgOTvecX", "ipLbLHEzv", "JB14msrMr", "3ThaCH3G4"]
+
+compute_job() : my_input : XYJCnwVsM | sha_256_value : d77b3ae212445533b49720b8b3658d336d41524e955cadb266ad576dbfe9ff2e , epoch_time : 1673747079.365396
+compute_job() : my_input : pMDkrLOan | sha_256_value : 88225bb8b16912775bfd3381a1b62b7044d04c5a7a0a2205dfc16beb33945c46 , epoch_time : 1673747079.919968
+compute_job() : my_input : PJ6pIJV44 | sha_256_value : d317d1a79d4b347cad4478f264b01df9db2d250037c7b65bbd4dd67c393cdded , epoch_time : 1673747079.960817
+compute_job() : my_input : cG7YOYwS1 | sha_256_value : 4c6d92e921b27d314d6da9bace68580db7ae36ce6a070c5d5e6a0626dba9c94f , epoch_time : 1673747079.993854
+compute_job() : my_input : sCvBrvksx | sha_256_value : 1a3de567c5fe3486d493602ef235c972bde8c83b2bae670d79f48163ff4438f2 , epoch_time : 1673747080.059119
+compute_job() : my_input : YcgOTvecX | sha_256_value : 7b3952cf2718c29ff6df6641f91bd2c6fa2198fc6a0535881525b0b4357043ea , epoch_time : 1673747080.112505
+compute_job() : my_input : aubjor5Gg | sha_256_value : e501d8279162bfe05419a05cfd11df42e6965d4595458da0820a220ffac7fcbe , epoch_time : 1673747080.294094
+compute_job() : my_input : ffg5KfRVe | sha_256_value : 0cb1ae96bc82ad00f5e765f54b6fec5c0d593ff10f77ecdabe48781a0419821d , epoch_time : 1673747080.39971
+compute_job() : my_input : 42K4i17vv | sha_256_value : 1502a11cbac9a986e6b56c8e92821b2fca2e55f0beafe9e38b524488f9d7c482 , epoch_time : 1673747080.696017
+compute_job() : my_input : 6rr5Mb1Gv | sha_256_value : 6fe58d7dd2d6e75cc8acbf4881a36b3f9e9547aac9a5fcbdc816f4bd0670461f , epoch_time : 1673747080.907202
+compute_job() : my_input : zJ91dbOAv | sha_256_value : 4732d8d51dff3218810bad5cb05e5ee750058e893d243dcd308720f74943f122 , epoch_time : 1673747081.079455
+compute_job() : my_input : C8AD9VMbN | sha_256_value : 54fe54da4caccd7011836f315e751e9d5c536ade924910169f1f6da4ee5690dc , epoch_time : 1673747081.309109
+compute_job() : my_input : LOQ6fLMV5 | sha_256_value : 14f72f3cde1fe77d1e8f30bd151b4440d71469f73b1c9c22257b0bfac0201819 , epoch_time : 1673747081.496496
+compute_job() : my_input : OmB2WMYu6 | sha_256_value : 3bc6672d451e14e937b438aefbb64f1c2c84d9bbd7d21ead9dbb3ba139f7afef , epoch_time : 1673747082.02419
+compute_job() : my_input : VeqyQKtQD | sha_256_value : c4b3ee13fe7b12a3cb722ae4d2ba324bb13ee167dbbb126deb25b72503fcf9c8 , epoch_time : 1673747082.144759
+compute_job() : my_input : ipLbLHEzv | sha_256_value : 40e3ae0b94f6629ede43f2b3ec4b263d09ac59d7defc3e79a781bbf50f269059 , epoch_time : 1673747082.300534
+compute_job() : my_input : uICIgQ75z | sha_256_value : 8317929f6a9f8d04504a837af2e1b9ae429d3be48e5fb8c21f4cc7cd2b4f3788 , epoch_time : 1673747082.457795
+compute_job() : my_input : 0AuB45Lbd | sha_256_value : 7872395297bc7ea1223ddae1bcdb3fbceb4d78e954440a425ac8562df537dfae , epoch_time : 1673747082.735495
+compute_job() : my_input : oOtA9Tzt4 | sha_256_value : e4c00fed9bbe7a18130c9d7852b322e69b7880b56e7baef7c74a9f8a7261a186 , epoch_time : 1673747082.773733
+compute_job() : my_input : u7Rx3Jp1B | sha_256_value : 236ef101d511d0e157b4c19cf9dd1f90b7b454168d93d52c11a9f17dc0592f34 , epoch_time : 1673747083.009317
+compute_job() : my_input : 1V6Ch08zs | sha_256_value : 68363ac3c1b2a0e2f0f375ff15b3ef10d8d7ea9d03646a3ffd5ca14505f52092 , epoch_time : 1673747083.234678
+compute_job() : my_input : uFF7lvidh | sha_256_value : 96c11616847e17d1dd2f20115184646a07a87d13d615a929f6d0a40add376a19 , epoch_time : 1673747083.290868
+compute_job() : my_input : nKhTvgrqJ | sha_256_value : d8fb09d5ca4f1ef12e79db8797d609facc601b3dbd7edc05a97b29855c47545a , epoch_time : 1673747083.926569
+compute_job() : my_input : ZQyeVn7yT | sha_256_value : 1c1a008c0c5e6a418d25a0a92c79213646b12a3bff7600e2f5c4b52944e88108 , epoch_time : 1673747084.104349
+compute_job() : my_input : CLz0oFYDb | sha_256_value : 215632807dbd00a8ed4f516dd8bc6c63425df67700245994cd64454092da5fa4 , epoch_time : 1673747084.19506
+compute_job() : my_input : t61FtzRN9 | sha_256_value : 2d89fdb82a619086f74a70cb863b44ba2b867d3ca50fb0740bacb3f919bb1d73 , epoch_time : 1673747084.234326
+compute_job() : my_input : JB14msrMr | sha_256_value : 5de48a3521ad2a2853c913008fdf1678f3a8313e3eef0e34ff2a297db3be7ac5 , epoch_time : 1673747084.405927
+compute_job() : my_input : 3ThaCH3G4 | sha_256_value : fcbd2407fdf11afe6861935c6e4af27dac9bc6a41409a6ec11e36a9ff7a26d17 , epoch_time : 1673747085.112416
+compute_job() : my_input : u83dW6PUr | sha_256_value : 089bbf796a6d2559432e1064d71ecafdf0286242c3473c1b9cfbb6612ec06494 , epoch_time : 1673747085.153877
+compute_job() : my_input : mnEsMZ3A0 | sha_256_value : 944af9d520bb12710b32bcb80dcb84cf741da7755f9081a0d7eed48091169a9b , epoch_time : 1673747085.675663
+results : [
+    (
+        "0888630fd4940cf3de0396d06e3d71f3129d10d27dcb0badea1250fad313dd41",
+        1673747272.324538,
+    ),
+    (
+        "d128de919b16f5b0aea9fe08660d84232f34e910c24d92e75cf215f009c92e19",
+        1673747271.591321,
+    ),
+    (
+        "9eb5a78fb2aa79935101b57b656340fe392a067925a8e5d07725e235b9f6d398",
+        1673747274.572332,
+    ),
+    (
+        "554fbe3489ed57ca4969ed9d532012bb544760392d616126904f67051c261f59",
+        1673747271.498116,
+    ),
+    (
+        "06c5a9960da840f45b36950dfec3631c09f5f7165584fe70b7ddfadaedc7f1f0",
+        1673747272.860816,
+    ),
+    (
+        "dc41fbc8d09d82694573214722657b06be64b0d0370ae580c16daf18bae3c60a",
+        1673747271.416253,
+    ),
+    (
+        "3c0c9d928f631d2b1593645376cf4b9e6937a2090ea6a96900afbae5d5dbcc06",
+        1673747272.66621,
+    ),
+    (
+        "0c223d6f1312b3cad997b50c513d04bcf53dd9c3bc382270c4a7bc9e48d39cee",
+        1673747272.201742,
+    ),
+    (
+        "42817fee5e19cb2a7d144e24940afb723f6e3dafccc558a62ca984f42cd6ffce",
+        1673747274.874443,
+    ),
+    (
+        "3df66ca4d166f4c6fde65cbc5741bc6fe972d0777b22244d1b1041dd6ebf3c9e",
+        1673747273.769186,
+    ),
+    (
+        "740d18eb2e03e774e16b28b8370113f68ba374cba91b71bbecd1338803687a72",
+        1673747276.487745,
+    ),
+    (
+        "6d12ff07e30394da7915e22ff1851d3da547fc00cb4ac9249ea5fb31a59cdd19",
+        1673747273.452667,
+    ),
+    (
+        "483fa44fe13c7b4c79f150ff5fb38142ccf41f229da10db01677d4f8fcc9864f",
+        1673747275.640469,
+    ),
+    (
+        "027e76305c164be774d6fd73188b6587221637944a493f72c83cbb86c69b6c35",
+        1673747274.047715,
+    ),
+    (
+        "45be3d5dabc0b6ae9e0730e94588a9a5cb37b627b3de0a4137837d15506c1305",
+        1673747274.502549,
+    ),
+    (
+        "4d2b8db1e9a278020eb3fede08857a0de21125857d36bf200ec26673b546a2fd",
+        1673747272.15114,
+    ),
+    (
+        "6fba11c9c9c83ece689485d7de3185e08422a756892a36b6badcaaec2367739e",
+        1673747274.17036,
+    ),
+    (
+        "dbee14487963d9c6e85ddf4f7f4d73e34a13a92422dbd5a652b785ceb80c5939",
+        1673747275.296178,
+    ),
+    (
+        "ab66104d8cfcdafd1a73638eef49dc0b26a5214fc86f12d1786fa8d687b01440",
+        1673747275.452,
+    ),
+    (
+        "bc25a03a3cad13dda28b8433a082f6ced7e9608a40ac31034a0b2f9cc25d69fd",
+        1673747276.396313,
+    ),
+    (
+        "0d96566b16ab61d8f8b9504d62c6e8e501913fc69adc6e8aeec0cd4a523dbd51",
+        1673747275.733711,
+    ),
+    (
+        "ae6bd8b3f1d3eadaa290893e0922dee6f57e9e329abcd09fa7612d8ecd453383",
+        1673747276.013697,
+    ),
+    (
+        "b829123bbf2ea693804c2ba38b1bfcbf783cdf3a76c4876e1624ba375831f2d0",
+        1673747272.654842,
+    ),
+    (
+        "7441298fbdfb12cb114a2297f0cf9950cc8dc755c6dfb209abfd2e4e7fdfec7d",
+        1673747274.236779,
+    ),
+    (
+        "7d50522ff378805adfc59431c24793947a11843595962735a4004eab9e403955",
+        1673747273.247425,
+    ),
+    (
+        "fbf8ce22831aea43d24b84592722c4bfcc3be08837b82aa29c184036c715ba74",
+        1673747274.277669,
+    ),
+    (
+        "c11cc2c1cf37e9dcf0de1acab84b2606bba5fa77bf22dbaca3e3574dd25e97ce",
+        1673747272.731439,
+    ),
+    (
+        "7c2ad62657128d6fdc0b35b6c1b20ed91eb4132fc2952c5e679453727cd09c87",
+        1673747274.838332,
+    ),
+    (
+        "8314eaed61fee90e3244356314a2c307a28a10eb12e6bc54bf298ad368ca43c1",
+        1673747277.11155,
+    ),
+    (
+        "f6dfb67a8028b3f2e08f42ebc9f1932e9e5f6c811623b05a53954713ff7b2549",
+        1673747276.435732,
+    ),
+]
+```
