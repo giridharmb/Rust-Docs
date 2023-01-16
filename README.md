@@ -1668,6 +1668,8 @@ results : [
 
 Thread Pools : With Fixed Thread Pool Size & `mpsc` | `channels`
 
+FYI : This needs refactoring.
+
 ```rust
 use rand::{thread_rng, Rng};
 use rayon::prelude::*;
@@ -1758,3 +1760,164 @@ compute_job() : my_input : MpEe8bHJv | sha_256_value : f82a94c1ee3973cd8c709bb6d
 results : [("63cfb36a203fa0483b8e34a1967dcd13b7d60f1f39904d84a23e914587cc45d8", 1673821750.955093), ("0b814e0fe547506e2ce19d28178f15068eb549c98eed47809795ba0bf4836da8", 1673821751.085114), ("8a034040e2ef749ee815cec6cc3dcb0ee41f3b0961b1cd29b8c6ea4ff2fb6ffc", 1673821751.32368), ("c08b279b2ffadeab7a5bcd2bf3be08210d31a18b98325801381d6cbb3cee1fad", 1673821751.684953), ("c3e75358acdf293b3719fea7ca750229d9d4ea2671a7d259b73e63b39d9644db", 1673821752.629222), ("03d56649b196e3bfcf1a75c75310d907dfb11229a835d80e04d20fd13a0d9e11", 1673821752.721017), ("893a57e85e28863700910eec965826a742939a15f45b7b1edaca0d17d81d1c0b", 1673821752.834414), ("fff4010cd6a9d8dcd5a5fd3d8e8342d9b842c95af11569d2b4575ea764f2eb97", 1673821753.449123), ("b174433a034659c33085ed41d6ac8eacf7ba2cfa2fc0d8b769b709362d685726", 1673821753.755912), ("ff9bb3409379acb8f087d4a11ef6694edd76853ad98642543a756a68275a126c", 1673821754.107252), ("b8c807a56fe167d9778af2eff520195c856ab451d6f2d760280ee56996ff80d6", 1673821754.310042), ("821618243fc4e71de39c91bcc123ead15c2bbc5dabe581c77b98dd21c8c029f7", 1673821755.184058), ("4f1b31224b342651c7f447dd63b031e6dda355df0f4a551b46f5635c29b31a48", 1673821755.356287), ("8d8e601c86f2d4be9b1edb0fc347ad0c937d2537b7e30f7b5b16fa0d061a5067", 1673821755.427253), ("79c43fdd8039c03586901b61ca422b8feeffb1d878ff14037836b84035161d87", 1673821756.023228), ("413dc63eb69e8c584faf4c2a27fc6a8dab30ce5835838a53a73c0ffc0421d637", 1673821756.593555), ("de777de9530c981a757bf5eece673c4532988de190a939de15ad0af3687961ce", 1673821756.80075), ("f82a94c1ee3973cd8c709bb6d6941458287d7698da0cb5bdd6bfe3ce2ba52205", 1673821756.960486)]
 ```
 
+Multiple Thread Pools : With Fixed Thread Pool Size & `mpsc` | `channels`
+
+FYI : This needs refactoring.
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "worker_pool"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+rayon = "1.6.1"
+sha256 = "1.1.1"
+```
+
+`main.rs`
+
+```rust
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use std::time::Duration;
+use rand::{distributions::Alphanumeric};
+use sha256::digest;
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::collections::HashMap;
+use std::thread;
+use rayon::ThreadPool;
+
+fn get_epoch_ms() -> f64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs_f64()
+}
+
+fn compute_job(thread_name: String, my_input: String) -> (String, f64) {
+    let mut range = rand::thread_rng();
+    let random_sleep_secs = range.gen_range(1.0..2.0);
+    std::thread::sleep(Duration::from_secs_f64(random_sleep_secs));
+    let sha_256_value = digest(my_input.clone()); // this will calcuate sha256 of given input (my_input)
+    let epoch_time = get_epoch_ms();
+    println!("compute_job() : thread_name : {} , my_input : {:?} | sha_256_value : {} , epoch_time : {}", thread_name, my_input, sha_256_value, epoch_time);
+    return (sha_256_value, epoch_time)
+}
+
+fn generate_random_string() -> String {
+    let s: String = rand::thread_rng()
+        .sample_iter(&Alphanumeric)
+        .take(9)
+        .map(char::from)
+        .collect();
+    return s;
+}
+
+fn generate_jobs(number_of_inputs: i32) -> Vec<String> {
+    let mut jobs = vec![];
+    for i in 0..number_of_inputs {
+        let my_rand_str = generate_random_string();
+        jobs.push(my_rand_str);
+    }
+    return jobs;
+}
+
+fn main() {
+
+    let mut my_jobs1 = generate_jobs(12);
+    let mut my_jobs2 = generate_jobs(18);
+
+    let pool1 = rayon::ThreadPoolBuilder::new()
+        .num_threads(3)
+        .build()
+        .unwrap();
+
+    let pool2 = rayon::ThreadPoolBuilder::new()
+        .num_threads(6)
+        .build()
+        .unwrap();
+
+    let mut jobs_vec = vec![];
+
+    jobs_vec.push(thread::spawn(move || {
+        return execute_job(String::from("thread_1"), my_jobs1, pool1);
+    }));
+
+    jobs_vec.push(thread::spawn(move || {
+        return execute_job(String::from("thread_2"), my_jobs2, pool2);
+    }));
+
+    let mut final_results = vec![];
+    for my_thread in jobs_vec {
+        let r = my_thread.join().unwrap();
+        final_results.push(r);
+    }
+    println!("\nfinal_results : {:?}", final_results);
+
+}
+
+fn execute_job(thread_name: String, input_jobs: Vec<String>, thread_pool: ThreadPool) -> Vec<(String, f64)> {
+    println!("execute_job()...");
+    let (tx, rx) = std::sync::mpsc::channel();
+    for input_job in input_jobs {
+        let tx = tx.clone();
+        let thread_name = thread_name.clone();
+        thread_pool.spawn(move || {
+            tx.send(compute_job(thread_name, input_job)).unwrap();
+        });
+    }
+    drop(tx); // close all senders
+    let results: Vec<(String, f64)> = rx.into_iter().collect(); // ... this would block
+    println!("\nresults : {:?}", results);
+    return results;
+}
+```
+
+Output
+
+```bash
+execute_job()...
+execute_job()...
+compute_job() : thread_name : thread_1 , my_input : "kXfJQKQmH" | sha_256_value : f25afb33e9276de6ebce2f674188a436001e2ae74418d4c116fe152080ae1eb5 , epoch_time : 1673842721.365629
+compute_job() : thread_name : thread_2 , my_input : "aAVJypBog" | sha_256_value : e5d980a3c60e90d979d603b8b2a6dba9a10474a5d0fbb968f85220b48844c74f , epoch_time : 1673842721.371302
+compute_job() : thread_name : thread_2 , my_input : "3iTFSR1l4" | sha_256_value : 31d1b41225fca0ede031667ddfe1cc1660d3577909bd69d9ad7d733b0a424406 , epoch_time : 1673842721.501707
+compute_job() : thread_name : thread_2 , my_input : "blq3amlun" | sha_256_value : 57e5929d3597161839fb4f01807747ccb30244eef621e75e3a39b62ce7603636 , epoch_time : 1673842721.648848
+compute_job() : thread_name : thread_1 , my_input : "PPABsySqL" | sha_256_value : 69679b87bc85902fc5522f36f0f5df1357a3b57d5c5fa889ad3981b2cdd779cd , epoch_time : 1673842721.737256
+compute_job() : thread_name : thread_1 , my_input : "rGPEOCiTt" | sha_256_value : 9749387dfe52ee588d1677c786ebbd87a26e7c34f0e73eba7ffaf013cec96d94 , epoch_time : 1673842721.818902
+compute_job() : thread_name : thread_2 , my_input : "hFOGeC7kr" | sha_256_value : 6c87b0a15880ddeaa4c86c12a70990b1c463067c1c0871170309cc96e53f06a9 , epoch_time : 1673842722.003265
+compute_job() : thread_name : thread_2 , my_input : "i1HHJyk8z" | sha_256_value : cacd91b2ace979f0e158b0e41ac51373f98550398f2765fa3af0542a4eee7654 , epoch_time : 1673842722.003497
+compute_job() : thread_name : thread_2 , my_input : "ba02FBtpu" | sha_256_value : 45e6094966be2f9504b0f506d22053990f77f40f7dd54707bc8baf6a5a8a5011 , epoch_time : 1673842722.321547
+compute_job() : thread_name : thread_2 , my_input : "9hf5wAnFT" | sha_256_value : bbe98a4df0b43da46e24b7cc72e044e562acb51f189754a7306216716559573c , epoch_time : 1673842722.637512
+compute_job() : thread_name : thread_2 , my_input : "cLmAb0kIw" | sha_256_value : 0b0a0524216b68bddda144242e7fbf3e6539c0fc1f40cd1049f362ef8c6e9f29 , epoch_time : 1673842722.777773
+compute_job() : thread_name : thread_1 , my_input : "HjA7Kr5DD" | sha_256_value : 7646a0c229b4a340541fca4819c52747990b6fcdd64fee9a118b7c5f9ea2fc46 , epoch_time : 1673842722.942442
+compute_job() : thread_name : thread_2 , my_input : "6iOB4ScN6" | sha_256_value : e4dbae2e0b2aa268ec0f2a87e59e84a00bc69983664497a106e2b2d6567638a2 , epoch_time : 1673842723.228651
+compute_job() : thread_name : thread_1 , my_input : "XgY8DXmVo" | sha_256_value : 953559a71c5635467fc16e92434ee95e946e8a25055a07831f6eecd7d4f3c263 , epoch_time : 1673842723.260944
+compute_job() : thread_name : thread_2 , my_input : "9hsk9U7PZ" | sha_256_value : 5b8687be3ff9316419aca2a3b827975d6c0c58258789ffdda21ebbf4547efc96 , epoch_time : 1673842723.317163
+compute_job() : thread_name : thread_1 , my_input : "TMq7gJWTL" | sha_256_value : a729a3ed0d4e656c9359d5bc124891068edb68f56c5356ff86007571bd7b2fbb , epoch_time : 1673842723.434574
+compute_job() : thread_name : thread_2 , my_input : "c1GfywuMQ" | sha_256_value : 224c97d8fe95375946117757d3c317877d3d3e8581030076f30cf56876eb41fd , epoch_time : 1673842723.64329
+compute_job() : thread_name : thread_2 , my_input : "CGceEAfhA" | sha_256_value : aff249d37df04ec2762c3edb2e4f1b8cd0d6d6c63568ef6621653d793265de79 , epoch_time : 1673842723.776862
+compute_job() : thread_name : thread_2 , my_input : "b1BcqhhYS" | sha_256_value : cc4929d2b2019e60eeb6277aa29d4aa23da3e4dc468ed8cb37ac993491afa471 , epoch_time : 1673842724.176338
+compute_job() : thread_name : thread_2 , my_input : "dOGYIsQUN" | sha_256_value : 5abe34fb3bf16180189f68b844559c9acd4135b8bf0df41ff0bfc28acbe02a7c , epoch_time : 1673842724.278151
+compute_job() : thread_name : thread_1 , my_input : "QzBIG6rFW" | sha_256_value : a5307ccebf3254091002bb528e89aed541ed21b7f419d44d311f9d45b3babd2b , epoch_time : 1673842724.382228
+compute_job() : thread_name : thread_2 , my_input : "RjMiq0DuL" | sha_256_value : 3795411902b343b9e32a459a292f9c2105e3e5ef8cb8b6f9f16b19510a438326 , epoch_time : 1673842724.619284
+compute_job() : thread_name : thread_2 , my_input : "KMehvvMlN" | sha_256_value : f3d5f6e856f04ad1efe4dc77892473f6fb96a2cb2a464959022274de4d8f9d7f , epoch_time : 1673842724.648562
+compute_job() : thread_name : thread_1 , my_input : "to6WiEVz8" | sha_256_value : b810c3f004e876dc847ace912e5294b953ce66a3fa40390016fe9d269ceb5a37 , epoch_time : 1673842724.70955
+compute_job() : thread_name : thread_1 , my_input : "918oiAZQV" | sha_256_value : 198681c0492a15db84d980d9e4f7948806df2fec4b9eb3ca419055214b36cca2 , epoch_time : 1673842724.864037
+compute_job() : thread_name : thread_2 , my_input : "S5Fs0Jl1G" | sha_256_value : 9d1cb4f38342ac786f73d1137e8c8403471f240517f540e645be9ef536a90c19 , epoch_time : 1673842725.348332
+compute_job() : thread_name : thread_2 , my_input : "iJ8pTrbrF" | sha_256_value : ec2f240f2029fd7cb3df641f1e2bff79a0e28d4b61a16c856764fae3a5f38f05 , epoch_time : 1673842725.493735
+
+results : [("e5d980a3c60e90d979d603b8b2a6dba9a10474a5d0fbb968f85220b48844c74f", 1673842721.371302), ("31d1b41225fca0ede031667ddfe1cc1660d3577909bd69d9ad7d733b0a424406", 1673842721.501707), ("57e5929d3597161839fb4f01807747ccb30244eef621e75e3a39b62ce7603636", 1673842721.648848), ("6c87b0a15880ddeaa4c86c12a70990b1c463067c1c0871170309cc96e53f06a9", 1673842722.003265), ("cacd91b2ace979f0e158b0e41ac51373f98550398f2765fa3af0542a4eee7654", 1673842722.003497), ("45e6094966be2f9504b0f506d22053990f77f40f7dd54707bc8baf6a5a8a5011", 1673842722.321547), ("bbe98a4df0b43da46e24b7cc72e044e562acb51f189754a7306216716559573c", 1673842722.637512), ("0b0a0524216b68bddda144242e7fbf3e6539c0fc1f40cd1049f362ef8c6e9f29", 1673842722.777773), ("e4dbae2e0b2aa268ec0f2a87e59e84a00bc69983664497a106e2b2d6567638a2", 1673842723.228651), ("5b8687be3ff9316419aca2a3b827975d6c0c58258789ffdda21ebbf4547efc96", 1673842723.317163), ("224c97d8fe95375946117757d3c317877d3d3e8581030076f30cf56876eb41fd", 1673842723.64329), ("aff249d37df04ec2762c3edb2e4f1b8cd0d6d6c63568ef6621653d793265de79", 1673842723.776862), ("cc4929d2b2019e60eeb6277aa29d4aa23da3e4dc468ed8cb37ac993491afa471", 1673842724.176338), ("5abe34fb3bf16180189f68b844559c9acd4135b8bf0df41ff0bfc28acbe02a7c", 1673842724.278151), ("3795411902b343b9e32a459a292f9c2105e3e5ef8cb8b6f9f16b19510a438326", 1673842724.619284), ("f3d5f6e856f04ad1efe4dc77892473f6fb96a2cb2a464959022274de4d8f9d7f", 1673842724.648562), ("9d1cb4f38342ac786f73d1137e8c8403471f240517f540e645be9ef536a90c19", 1673842725.348332), ("ec2f240f2029fd7cb3df641f1e2bff79a0e28d4b61a16c856764fae3a5f38f05", 1673842725.493735)]
+compute_job() : thread_name : thread_1 , my_input : "lvQX8pe6m" | sha_256_value : e07e1207d80d970cb7bb4ad5df8afc0087a2d2b3483c8c91b3f6ba836dafb3fe , epoch_time : 1673842726.10374
+compute_job() : thread_name : thread_1 , my_input : "Fv6obTVNk" | sha_256_value : 7c21017f339bb50e492ec1976af67a3239e24345af9a53ae46e82c9fc5253a72 , epoch_time : 1673842726.223604
+compute_job() : thread_name : thread_1 , my_input : "FIo8B9SiN" | sha_256_value : b67ef75c68ac03da78eb638a85af557db3a94718dcc29c35f4511708062a6bf7 , epoch_time : 1673842726.361256
+
+results : [("f25afb33e9276de6ebce2f674188a436001e2ae74418d4c116fe152080ae1eb5", 1673842721.365629), ("69679b87bc85902fc5522f36f0f5df1357a3b57d5c5fa889ad3981b2cdd779cd", 1673842721.737256), ("9749387dfe52ee588d1677c786ebbd87a26e7c34f0e73eba7ffaf013cec96d94", 1673842721.818902), ("7646a0c229b4a340541fca4819c52747990b6fcdd64fee9a118b7c5f9ea2fc46", 1673842722.942442), ("953559a71c5635467fc16e92434ee95e946e8a25055a07831f6eecd7d4f3c263", 1673842723.260944), ("a729a3ed0d4e656c9359d5bc124891068edb68f56c5356ff86007571bd7b2fbb", 1673842723.434574), ("a5307ccebf3254091002bb528e89aed541ed21b7f419d44d311f9d45b3babd2b", 1673842724.382228), ("b810c3f004e876dc847ace912e5294b953ce66a3fa40390016fe9d269ceb5a37", 1673842724.70955), ("198681c0492a15db84d980d9e4f7948806df2fec4b9eb3ca419055214b36cca2", 1673842724.864037), ("e07e1207d80d970cb7bb4ad5df8afc0087a2d2b3483c8c91b3f6ba836dafb3fe", 1673842726.10374), ("7c21017f339bb50e492ec1976af67a3239e24345af9a53ae46e82c9fc5253a72", 1673842726.223604), ("b67ef75c68ac03da78eb638a85af557db3a94718dcc29c35f4511708062a6bf7", 1673842726.361256)]
+
+final_results : [[("f25afb33e9276de6ebce2f674188a436001e2ae74418d4c116fe152080ae1eb5", 1673842721.365629), ("69679b87bc85902fc5522f36f0f5df1357a3b57d5c5fa889ad3981b2cdd779cd", 1673842721.737256), ("9749387dfe52ee588d1677c786ebbd87a26e7c34f0e73eba7ffaf013cec96d94", 1673842721.818902), ("7646a0c229b4a340541fca4819c52747990b6fcdd64fee9a118b7c5f9ea2fc46", 1673842722.942442), ("953559a71c5635467fc16e92434ee95e946e8a25055a07831f6eecd7d4f3c263", 1673842723.260944), ("a729a3ed0d4e656c9359d5bc124891068edb68f56c5356ff86007571bd7b2fbb", 1673842723.434574), ("a5307ccebf3254091002bb528e89aed541ed21b7f419d44d311f9d45b3babd2b", 1673842724.382228), ("b810c3f004e876dc847ace912e5294b953ce66a3fa40390016fe9d269ceb5a37", 1673842724.70955), ("198681c0492a15db84d980d9e4f7948806df2fec4b9eb3ca419055214b36cca2", 1673842724.864037), ("e07e1207d80d970cb7bb4ad5df8afc0087a2d2b3483c8c91b3f6ba836dafb3fe", 1673842726.10374), ("7c21017f339bb50e492ec1976af67a3239e24345af9a53ae46e82c9fc5253a72", 1673842726.223604), ("b67ef75c68ac03da78eb638a85af557db3a94718dcc29c35f4511708062a6bf7", 1673842726.361256)], [("e5d980a3c60e90d979d603b8b2a6dba9a10474a5d0fbb968f85220b48844c74f", 1673842721.371302), ("31d1b41225fca0ede031667ddfe1cc1660d3577909bd69d9ad7d733b0a424406", 1673842721.501707), ("57e5929d3597161839fb4f01807747ccb30244eef621e75e3a39b62ce7603636", 1673842721.648848), ("6c87b0a15880ddeaa4c86c12a70990b1c463067c1c0871170309cc96e53f06a9", 1673842722.003265), ("cacd91b2ace979f0e158b0e41ac51373f98550398f2765fa3af0542a4eee7654", 1673842722.003497), ("45e6094966be2f9504b0f506d22053990f77f40f7dd54707bc8baf6a5a8a5011", 1673842722.321547), ("bbe98a4df0b43da46e24b7cc72e044e562acb51f189754a7306216716559573c", 1673842722.637512), ("0b0a0524216b68bddda144242e7fbf3e6539c0fc1f40cd1049f362ef8c6e9f29", 1673842722.777773), ("e4dbae2e0b2aa268ec0f2a87e59e84a00bc69983664497a106e2b2d6567638a2", 1673842723.228651), ("5b8687be3ff9316419aca2a3b827975d6c0c58258789ffdda21ebbf4547efc96", 1673842723.317163), ("224c97d8fe95375946117757d3c317877d3d3e8581030076f30cf56876eb41fd", 1673842723.64329), ("aff249d37df04ec2762c3edb2e4f1b8cd0d6d6c63568ef6621653d793265de79", 1673842723.776862), ("cc4929d2b2019e60eeb6277aa29d4aa23da3e4dc468ed8cb37ac993491afa471", 1673842724.176338), ("5abe34fb3bf16180189f68b844559c9acd4135b8bf0df41ff0bfc28acbe02a7c", 1673842724.278151), ("3795411902b343b9e32a459a292f9c2105e3e5ef8cb8b6f9f16b19510a438326", 1673842724.619284), ("f3d5f6e856f04ad1efe4dc77892473f6fb96a2cb2a464959022274de4d8f9d7f", 1673842724.648562), ("9d1cb4f38342ac786f73d1137e8c8403471f240517f540e645be9ef536a90c19", 1673842725.348332), ("ec2f240f2029fd7cb3df641f1e2bff79a0e28d4b61a16c856764fae3a5f38f05", 1673842725.493735)]]
+```
