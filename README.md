@@ -36,6 +36,23 @@ println!("{:?}", my_data);
 
 #### Ownership (Borrowing Data)
 
+Notes-1:
+
+- Programs must track memory
+- If they fail to do so, a memory leak occurs
+- Rust utilizes an "ownership" model to manage memory
+- The owner of the memory is responsible for cleaning up the memory
+- Memory can either be "moved" or "borrowed"
+
+Notes-2:
+
+- Memory must be managed in some way to prevent leaks
+- Rust uses "ownership" to accomplish memory management
+- The "owner" of the data must clean up the memory
+- This occurs automatically at the end of the scope
+- Default behaviour is to "move" memory to a new owner
+- Use an `&` to allow the code to "borrow" memory
+
 The below program *will not* compile
 
 ```rust
@@ -78,7 +95,7 @@ fn main() {
     let my_light = Light::Dull;
     display_light(&my_light); // ---> here we are (borrowing) my_light
     display_light(&my_light); // ---> here we are (borrowing) my_light
-    
+
     // FYI : main() function is still the owner of my_light
     // display_light(...) function -> cannot delete my_light, as it is borrowing it.
 }
