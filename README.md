@@ -34,6 +34,56 @@ println!("{:?}", my_data);
 #[derive(Debug)] -> this is an annotation
 ```
 
+#### Ownership (Borrowing Data)
+
+The below program *will not* compile
+
+```rust
+enum Light {
+    Bright,
+    Dull,
+}
+
+fn display_light(light: Light) {
+    match light {
+        Light::Bright => println!("bright !"),
+        Light::Dull => println!("dull !"),
+    }
+}
+
+fn main() {
+    let my_light = Light::Dull;
+    display_light(my_light); // ---> my_light gets moved (or owned) to (display_light) function
+    display_light(my_light); // --------> this is an error (program wont compile)
+}
+```
+
+To fix the above program, do it this way
+
+```rust
+
+enum Light {
+    Bright,
+    Dull,
+}
+
+fn display_light(light: &Light) {
+    match light {
+        Light::Bright => println!("bright !"),
+        Light::Dull => println!("dull !"),
+    }
+}
+
+fn main() {
+    let my_light = Light::Dull;
+    display_light(&my_light); // ---> here we are (borrowing) my_light
+    display_light(&my_light); // ---> here we are (borrowing) my_light
+    
+    // FYI : main() function is still the owner of my_light
+    // display_light(...) function -> cannot delete my_light, as it is borrowing it.
+}
+```
+
 `ownership` | `borrowing` | `references`
 
 Important : Use of Reference
