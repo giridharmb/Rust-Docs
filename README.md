@@ -101,6 +101,41 @@ fn main() {
 }
 ```
 
+#### Impl (Implementation) | Structs
+
+```rust
+struct Temperature {
+    degrees_f: f64,
+}
+
+impl Temperature {
+    fn freezing() -> Self { // 'Self' -> refers to 'Temperature' here
+        return Self {
+            degrees_f: 32.0
+        };
+    }
+
+    fn show_temp(&self) {
+        println!("{:?} degrees F", self.degrees_f);
+    }
+}
+
+fn main() {
+    let hot = Temperature { degrees_f: 99.9 };
+    hot.show_temp();
+
+    let cold = Temperature::freezing();
+    cold.show_temp();
+}
+```
+
+Output
+
+```bash
+99.9 degrees F
+32.0 degrees F
+```
+
 `ownership` | `borrowing` | `references`
 
 Important : Use of Reference
