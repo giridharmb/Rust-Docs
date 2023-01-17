@@ -136,6 +136,82 @@ Output
 32.0 degrees F
 ```
 
+Another Impl (Implementation)
+
+```rust
+enum Color {
+    Brown,
+    Red,
+}
+
+impl Color {
+    fn print(&self) {
+        match self {
+            Color::Brown => println!("brown"),
+            Color::Red => println!("red"),
+        }
+    }
+}
+
+struct Dimensions {
+    width: f64,
+    height: f64,
+    depth: f64,
+}
+
+impl Dimensions {
+    fn print(&self) {
+        println!("width : {:?}", self.width);
+        println!("height : {:?}", self.height);
+        println!("depth : {:?}", self.depth);
+    }
+}
+
+struct ShippingBox {
+    color: Color,
+    weight: f64,
+    dimensions: Dimensions,
+}
+
+impl ShippingBox {
+    fn new(weight: f64, color: Color, dimensions: Dimensions) -> Self {
+        Self {
+            weight,
+            color,
+            dimensions,
+        }
+    }
+
+    fn print(&self) {
+        self.color.print();
+        self.dimensions.print();
+        println!("weight : {:?}", self.weight);
+    }
+}
+
+fn main() {
+    let my_dimensions  = Dimensions {
+        width: 2.0,
+        height: 3.5,
+        depth: 4.5,
+    };
+
+    let my_color = Color::Brown;
+    let my_box = ShippingBox::new(99.00, my_color, my_dimensions);
+    my_box.print();
+}
+```
+
+Output
+
+```bash
+brown
+width : 2.0
+height : 3.5
+depth : 4.5
+weight : 99.0
+```
+
 `ownership` | `borrowing` | `references`
 
 Important : Use of Reference
