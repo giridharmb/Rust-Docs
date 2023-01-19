@@ -99,6 +99,8 @@ fn main() {
 }
 ```
 
+After you run `cargo doc --open` , the documentation will open up on the browser.
+
 #### Ownership (Borrowing Data)
 
 Notes-1:
