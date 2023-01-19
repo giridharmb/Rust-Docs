@@ -34,6 +34,71 @@ println!("{:?}", my_data);
 #[derive(Debug)] -> this is an annotation
 ```
 
+First Things First :)
+
+Generating Documentation
+
+- Use `///` To write documentation for the code blocks
+- To build and open documentation, run
+- `cargo doc --open`
+
+Try generating the documentation for the below code
+
+```rust
+/// This a gropcery item struct, having name (String), quantity (number of items) and price (price of the item)
+struct GroceryItem {
+    name: String,
+    quantity: i32,
+    price: f64,
+}
+
+/// This function returns an Option which is actually a tuple (quantity & price)
+fn find_quantity(grocery_name: &str) -> Option<(i32, f64)> {
+    let groceries = vec![
+        GroceryItem { name: "bananas".to_owned() , quantity: 4 , price: 3.5 },
+        GroceryItem { name: "eggs".to_owned() , quantity: 12 , price : 2.0 },
+        GroceryItem { name: "bread".to_owned() , quantity: 1 , price : 1.5 },
+    ];
+
+    for item in groceries {
+        if item.name == grocery_name {
+            return Some((item.quantity, item.price))
+        }
+    }
+    /// If there is no item with the specified name, a (None) is returned
+    return None;
+}
+
+/// calcualte function will accept an item name as input and then find out the quantity
+/// And price of each that item, return the result as (quantity * price)
+fn calculate(item_name: &str) -> f64 {
+    return match find_quantity(item_name) {
+        None => {
+            println!("quantity for {:?} : missing", item_name);
+            0.0
+        }
+        Some(d) => {
+            println!("quantity for {:?} : {:?}", item_name, d);
+            let (quantity, price) = d;
+            quantity as f64 * price
+        }
+    };
+
+}
+
+/// Entry point of the program
+/// This will query couple of items where one item is present and another one which is not present
+/// And then print out the result returned from calculate function
+fn main() {
+    let item_data_1 = calculate("bananas");
+    println!("item_data_1 : {}", item_data_1);
+
+    let item_data_2 = calculate("carrots");
+    println!("item_data_2 : {}", item_data_2);
+
+}
+```
+
 #### Ownership (Borrowing Data)
 
 Notes-1:
