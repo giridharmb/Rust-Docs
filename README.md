@@ -101,6 +101,48 @@ fn main() {
 }
 ```
 
+#### Strings
+
+`String` -> Owned (Must be used in Structs)
+
+`&str` -> borrowed String slice (Use this when passing data to a function)
+
+- Strings are automatically borrowed
+- Use `.to_owned()` or `String::from()` to create an owned copy of a string slice
+- Use an owned String when storing in struct
+
+Also, `#[derive(...)` macro is usually applied to `enums` & `structs`
+
+```rust
+fn print_it(data: &str) {
+    println!("{:?}", data);
+}
+
+fn main() {
+    print_it("a string slice"); // using it this way -> is automatically borrowed
+    let owned_string = "owner string".to_owned();
+    let another_owned = String::from("another");
+    print_it(owned_string);
+    print_it(another_owned);
+}
+```
+
+This *will not* work
+
+```rust
+struct Employee {
+    name: &str,
+}
+```
+
+This is the way to use a (string) in a struct
+
+```rust
+struct Employee {
+    name: String,
+}
+```
+
 #### Impl (Implementation) | Structs
 
 ```rust
