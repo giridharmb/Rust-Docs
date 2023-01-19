@@ -113,6 +113,51 @@ fn main() {
 
 Also, `#[derive(...)` macro is usually applied to `enums` & `structs`
 
+For instance >
+
+```rust
+#[derive(Debug, Clone, Copy)]
+enum Position {
+    Manager,
+    Supervisor,
+    Worker,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct Employee {
+    position: Position,
+    work_hours: i64,
+}
+```
+
+Also note, since we have `position: Position` in struct `Employee`, <br/>
+same derive `#[derive(Debug, Clone, Copy)]` must be applied to both the places.<br/>
+Otherwise, we will get compilation error.
+
+If we apply `Copy` derive -> a `copy` is made, instead of `move` when passed to a function
+
+So if we expand the above piece of code,
+
+```rust
+fn print_employee(emp: Employee) {
+    println!("{:?}", emp);
+}
+
+fn main() {
+    let me = Employee {
+        position: Position::worker,
+        work_hours: 40,
+    }
+    println!(me); // because of `Copy` derive, ownership * is not * transferred
+    println!(me); // because of `Copy` derive, ownership * is not * transferred
+}
+```
+
+Without `#[derive(... , Clone, Copy, ...)]` (that is `Copy` & `Clone`), the above<br/>
+program will usually throw error.
+
+Since we are making a `copy` of the piece of data, program will run without errors.
+
 ```rust
 fn print_it(data: &str) {
     println!("{:?}", data);
