@@ -518,7 +518,37 @@ fn main() {
 }
 ```
 
-Result Type : Is of type `enum`
+`Result` Type : Is of type `enum`
+
+- `Result` : A data type that contains one of two types of data
+    - "`successful`" data
+    - "`error`" data
+
+- `Result` represents `success` or `failure`
+- `Ok(variable_name)` : operation was completed
+- `Err(variable_name)` : operation failed
+- Useful when working with functionality that can potentially fail
+- Use `Results<T,E>` when working with results
+
+```rust
+fn get_sound(name: &str) -> Result<SoundData, String> {
+    if name == "alert" {
+        Ok(SoundData::new("alert"))
+    } else {
+        Err("unable to find the sound data".to_owned())
+    }
+}
+
+fn main() {
+    let sound = get_sound("alert");
+    match sound {
+        Ok(_) => println!("sound data located !"),
+        Err(e) => println!("error : {:?}", e),
+    }
+}
+```
+
+Another usage of `Result`
 
 ```rust
 let mut my_input_string = String::new();
