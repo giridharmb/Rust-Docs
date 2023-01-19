@@ -648,6 +648,105 @@ fn run_game() -> Option<()> {
 Note : `?` above, that is <br/>
 `lookup_player(1)?` : This will return `None`, If `lookup_player(1)` returns `None`.
 
+#### Option Example
+
+```rust
+struct Customer {
+    age: Option<i32>,
+    email: String,
+}
+
+fn main() {
+    let mark = Customer {
+        age: Some(55),
+        email: "mark@company1.com".to_owned(),
+    };
+
+    let becky = Customer {
+        age: None,
+        email: "becky@company2.com".to_owned(),
+    };
+
+    match mark.age {
+        Some(d) => {
+            println!("customer is {:?} years old", d);
+        },
+        None => {
+            println!("customer age is not provided");
+        }
+    }
+
+    match becky.age {
+        Some(d) => {
+            println!("customer is {:?} years old", d);
+        },
+        None => {
+            println!("customer age is not provided");
+        }
+    }
+}
+```
+
+Output
+
+```bash
+customer is 55 years old
+customer age is not provided
+```
+
+Another Usage of `Option`
+
+```rust
+struct GroceryItem {
+    name: String,
+    quantity: i32,
+}
+
+fn find_quantity(grocery_name: &str) -> Option<i32> {
+    let groceries = vec![
+        GroceryItem { name: "bananas".to_owned() , quantity: 4 },
+        GroceryItem { name: "eggs".to_owned() , quantity: 12 },
+        GroceryItem { name: "bread".to_owned() , quantity: 1 },
+    ];
+
+    for item in groceries {
+        if item.name == grocery_name {
+            return Some(item.quantity)
+        }
+    }
+    // if name matches nothing, return None
+    return None;
+}
+
+fn main() {
+    let item_1 = match find_quantity("bananas") {
+        None => {
+            println!("quantity for bananas : missing");
+        }
+        Some(d) => {
+            println!("quantity for bananas : {:?}", d);
+        }
+    };
+
+
+    let item_2 = match find_quantity("carrots") {
+        None => {
+            println!("quantity for carrots : missing");
+        }
+        Some(d) => {
+            println!("quantity for carrots : {:?}", d);
+        }
+    };
+}
+```
+
+Output
+
+```bash
+quantity for bananas : 4
+quantity for carrots : missing
+```
+
 #### Error Handling
 
 Error Handling : Example-1
