@@ -670,6 +670,69 @@ error : "menu choice is not valid"
 
 Another usage of `Result` & `Err`
 
+Check the function `pick_choice(input: &str) -> Result<(), String>` below , which uses `?`
+
+```rust
+#[derive(Debug)]
+enum MenuChoice {
+    MainMenu,
+    Start,
+    Quit,
+}
+
+fn get_choice(input: &str) -> Result<MenuChoice, String> {
+    match input {
+        "main_menu" => Ok(MenuChoice::MainMenu),
+        "start" => Ok(MenuChoice::Start),
+        "quit" => Ok(MenuChoice::Quit),
+        _ => Err("menu choice is not valid".to_owned()),
+    }
+}
+
+fn print_choice(choice: &Result<MenuChoice, String>) {
+    println!("choice : {:?}", choice)
+}
+
+fn print_choice_v2(choice: &MenuChoice) {
+    println!("your choice is : {:?}", choice)
+}
+
+// this function returns Result<(),String>
+// () : is a unit type, which means "Nothing"
+// and in case of Error, a String will be returned
+// Since return type is of type Result, the signature is Result<T,E>
+// That is why we are setting the Ok() data type to be ()
+// And Error to be of type String
+fn pick_choice(input: &str) -> Result<(), String> {
+    let choice = get_choice(input)?;
+    print_choice_v2(&choice);
+    Ok(())
+}
+
+fn main() {
+    let choice = pick_choice("main_menu");
+    println!("result of your choice : {:?}", choice);
+
+    let choice = pick_choice("start");
+    println!("result of your choice : {:?}", choice);
+
+    let choice = pick_choice("whats_this");
+    println!("result of your choice : {:?}", choice);
+}
+```
+
+Output
+
+```bash
+your choice is : MainMenu
+result of your choice : Ok(())
+your choice is : Start
+result of your choice : Ok(())
+result of your choice : Err("menu choice is not valid")
+```
+
+Another usage of `Result` & `Err`
+
 ```rust
 let mut my_input_string = String::new();
 
