@@ -153,6 +153,12 @@ fn main() {
 }
 ```
 
+*Important Note*:
+
+Apply `Clone` & `Copy` derive for `enum` and `structs` which are small in size.
+
+If they are large, then expensive copies will made each time functions are called.
+
 Without `#[derive(... , Clone, Copy, ...)]` (that is `Copy` & `Clone`), the above<br/>
 program will usually throw error.
 
