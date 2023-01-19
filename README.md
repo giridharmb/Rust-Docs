@@ -584,9 +584,9 @@ func_test("a", "b")
 
 #### Option
 
-- Option represents Some(..) data or None (which is nothing)
+- Option represents `Some(..)` data or `None` (which is nothing)
 - Useful when working with optional data (ex: form fields)
-- Use Option<type> to declare an optional type
+- Use `Option<type>` to declare an optional type
 
 The below code will not compile, because `id` can be anything apart from value of `1`
 
