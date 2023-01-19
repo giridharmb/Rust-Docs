@@ -1332,6 +1332,51 @@ fn main() {
 }
 ```
 
+Another example of advanced match
+
+```rust
+enum Ticket {
+    Backstage(f64, String),
+    Standard(f64),
+    Vip(f64, String),
+    Free(f64, String),
+}
+
+fn main() {
+    let mut tickets = vec![];
+    tickets.push(Ticket::Backstage(50.0, "Billy".to_owned()));
+    tickets.push(Ticket::Standard(15.0));
+    tickets.push(Ticket::Vip(30.0, "Amy".to_owned()));
+    tickets.push(Ticket::Free(0.0, "Billy".to_owned()));
+
+    for ticket in tickets {
+        match ticket {
+            Ticket::Backstage(price, holder) => {
+                println!("Backstage : Holder : {:?} , Price {:?}", holder, price);
+            },
+            Ticket::Standard(price) => {
+                println!("Standard : Price {:?}", price);
+            },
+            Ticket::Vip(price, holder) => {
+                println!("Vip : Holder : {:?} , Price {:?}", holder, price);
+            },
+            _ => {
+                println!("Unknown Ticket Type");
+            }
+        }
+    }
+}
+```
+
+Output
+
+```bash
+Backstage : Holder : "Billy" , Price 50.0
+Standard : Price 15.0
+Vip : Holder : "Amy" , Price 30.0
+Unknown Ticket Type
+```
+
 Threading Example
 
 ```rust
