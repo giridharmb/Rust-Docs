@@ -1287,6 +1287,51 @@ The above program will throw the below error because we have used `move` (which 
 |                      ^ value borrowed here after move
 ```
 
+#### Advanced Match
+
+```rust
+enum Discount {
+    Percent(i32),
+    Flat(i32),
+}
+
+struct Ticket {
+    event: String,
+    price: i32,
+}
+
+fn main() {
+    let n = 3;
+    match n {
+        3 => println!("value is three !"),
+        other => println!("number : {:?}", other),
+    }
+
+    let flat = Discount::flat(3);
+
+    match flat {
+        Discount::flat(2) => println!("flat 2"),
+        Discount::flat(amount) => println!("flat discount of {:?}", amount),
+        _ => (),
+    }
+
+    //---
+
+    let concert = Ticket {
+        event: "concert".to_owned(), // since "concert" is a slice and we need String as datatype
+        price: 50,
+    }
+
+    // --- Matching on Struct ---
+    // Note
+    // below , we are using '..', which means -> ingore everything else in the Struct
+    match concert {
+        Ticket {price, ..} => println!("price : {:?}", price),
+        Ticket {50, event} => println!("event is priced @ 50 : {:?}", event),
+    }
+}
+```
+
 Threading Example
 
 ```rust
