@@ -584,6 +584,10 @@ func_test("a", "b")
 
 #### Option
 
+- Option represents Some(..) data or None (which is nothing)
+- Useful when working with optional data (ex: form fields)
+- Use Option<type> to declare an optional type
+
 The below code will not compile, because `id` can be anything apart from value of `1`
 
 ```rust
@@ -745,6 +749,65 @@ Output
 ```bash
 quantity for bananas : 4
 quantity for carrots : missing
+```
+
+Slightly Expanding Above Option Example
+
+```rust
+struct GroceryItem {
+    name: String,
+    quantity: i32,
+    price: f64,
+}
+
+// this function returns quantity & price
+fn find_quantity(grocery_name: &str) -> Option<(i32, f64)> {
+    let groceries = vec![
+        GroceryItem { name: "bananas".to_owned() , quantity: 4 , price: 3.5 },
+        GroceryItem { name: "eggs".to_owned() , quantity: 12 , price : 2.0 },
+        GroceryItem { name: "bread".to_owned() , quantity: 1 , price : 1.5 },
+    ];
+
+    for item in groceries {
+        if item.name == grocery_name {
+            return Some((item.quantity, item.price))
+        }
+    }
+    // if name matches nothing, return None
+    return None;
+}
+
+fn calculate(item_name: &str) -> f64 {
+    return match find_quantity(item_name) {
+        None => {
+            println!("quantity for {:?} : missing", item_name);
+            0.0
+        }
+        Some(d) => {
+            println!("quantity for {:?} : {:?}", item_name, d);
+            let (quantity, price) = d;
+            quantity as f64 * price
+        }
+    };
+
+}
+fn main() {
+    let item_data_1 = calculate("bananas");
+    println!("item_data_1 : {}", item_data_1);
+
+    let item_data_2 = calculate("carrots");
+    println!("item_data_2 : {}", item_data_2);
+
+}
+```
+
+Output
+
+```bash
+quantity for "bananas" : (4, 3.5)
+item_data_1 : 14
+quantity for "carrots" : missing
+item_data_2 : 0
 ```
 
 #### Error Handling
