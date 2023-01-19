@@ -34,13 +34,14 @@ println!("{:?}", my_data);
 #[derive(Debug)] -> this is an annotation
 ```
 
-First Things First :)
+### First Things First :)
 
-Generating Documentation
+For getting Rust standard library documentation, run `rustup doc`
+
+Generating/Viewing Documentation For Your Own Code
 
 - Use `///` To write documentation for the code blocks
-- To build and open documentation, run
-- `cargo doc --open`
+- To build and open documentation, run `cargo doc --open`
 
 Try generating the documentation for the below code
 
