@@ -594,6 +594,83 @@ choice : Err("menu choice is not valid")
 Another usage of `Result` & `Err`
 
 ```rust
+#[derive(Debug)]
+enum MenuChoice {
+    MainMenu,
+    Start,
+    Quit,
+}
+
+fn get_choice(input: &str) -> Result<MenuChoice, String> {
+    match input {
+        "main_menu" => Ok(MenuChoice::MainMenu),
+        "start" => Ok(MenuChoice::Start),
+        "quit" => Ok(MenuChoice::Quit),
+        _ => Err("menu choice is not valid".to_owned()),
+    }
+}
+
+fn print_choice(choice: &Result<MenuChoice, String>) {
+    println!("choice : {:?}", choice)
+}
+
+fn print_choice_v2(choice: &MenuChoice) {
+    println!("your choice is : {:?}", choice)
+}
+
+fn main() {
+    let choice1 = get_choice("main_menu");
+    print_choice(&choice1);
+
+    let choice2 = get_choice("start");
+    print_choice(&choice2);
+
+    let choice3 = get_choice("whats_this");
+    print_choice(&choice3);
+
+    match choice1 {
+        Ok(d) => {
+            print_choice_v2(&d);
+        }
+        Err(e) => {
+            println!("error : {:?}", e);
+        }
+    }
+
+    match choice2 {
+        Ok(d) => {
+            print_choice_v2(&d);
+        }
+        Err(e) => {
+            println!("error : {:?}", e);
+        }
+    }
+
+    match choice3 {
+        Ok(d) => {
+            print_choice_v2(&d);
+        }
+        Err(e) => {
+            println!("error : {:?}", e);
+        }
+    }
+}
+```
+
+Output
+
+```bash
+choice : Ok(MainMenu)
+choice : Ok(Start)
+choice : Err("menu choice is not valid")
+your choice is : MainMenu
+your choice is : Start
+error : "menu choice is not valid"
+```
+
+Another usage of `Result` & `Err`
+
+```rust
 let mut my_input_string = String::new();
 
 println!("enter a number: ");
