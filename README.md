@@ -782,6 +782,156 @@ println!("Yay ! you entered a number : {:?}", my_num);
 // method_2_end
 ```
 
+#### Result Type and ? Operator
+
+`?` operator (below) : This expression is evaluated : `try_building_access(employee)?`
+
+If try_building_access(employee) returns an error
+    Then String is returned with error message
+Otherwise
+    If it was successful , variable 'attempt_access' will have a valid value
+
+If you are using a `?` operator, your function must return a `Result<T,E>`
+
+```rust
+enum Position {
+    Maintenance,
+    Marketing,
+    Manager,
+    LineSupervisor,
+    KitchenStaff,
+    AssemblyTech,
+}
+
+enum Status {
+    Active,
+    Terminated,
+}
+
+struct Employee {
+    position: Position,
+    status: Status,
+}
+
+fn try_building_access(employee: &Employee) -> Result<(), String> {
+    match employee.status {
+        Status::Terminated => {
+            return Err("employee terminated".to_owned())
+        },
+        _ => (),
+    }
+
+    match employee.position {
+        Position::Maintenance => {
+            Ok(())
+        },
+        Position::Marketing => {
+            Ok(())
+        }
+        Position::Manager => {
+            Ok(())
+        }
+        // --- these positions will not have access to the building ---
+        // Position::LineSupervisor => {}
+        // Position::KitchenStaff => {}
+        // Position::AssemblyTech => {}
+        _ => Err("invalid position for building access".to_owned())
+    }
+}
+
+fn print_access(employee: &Employee) -> Result<(), String> {
+    /*
+    '?' operator : this expression is evaluated : try_building_access(employee)?
+    If try_building_access(employee) returns an error
+        -> Then String is returned with error message
+    Otherwise
+        -> If it was successful , variable 'attempt_access' will have a valid value
+
+    If you are using a '?' operator, your function must return a Result<T,E>
+    */
+
+    let attempt_access = try_building_access(employee)?;
+    println!("access ok");
+    Ok(())
+}
+
+fn main() {
+    let emp_1 = Employee {
+        position: Position::Manager,
+        status: Status::Active,
+    };
+
+    let emp_2 = Employee {
+        position: Position::AssemblyTech,
+        status: Status::Active,
+    };
+
+    let emp_3 = Employee {
+        position: Position::LineSupervisor,
+        status: Status::Terminated,
+    };
+
+    let emp_4 = Employee {
+        position: Position::Marketing,
+        status: Status::Terminated,
+    };
+
+    let emp_5 = Employee {
+        position: Position::Manager,
+        status: Status::Terminated,
+    };
+
+    //----------------------------------------------------------------
+
+    match print_access(&emp_1) {
+        Err(e) => {
+            println!("emp_1 : access denied : {:?}", e)
+        },
+        _ => (),
+    }
+
+    match print_access(&emp_2) {
+        Err(e) => {
+            println!("emp_2 : access denied : {:?}", e)
+        },
+        _ => (),
+    }
+
+    match print_access(&emp_3) {
+        Err(e) => {
+            println!("emp_3 : access denied : {:?}", e)
+        },
+        _ => (),
+    }
+
+    match print_access(&emp_4) {
+        Err(e) => {
+            println!("emp_4 : access denied : {:?}", e)
+        },
+        _ => (),
+    }
+
+    match print_access(&emp_5) {
+        Err(e) => {
+            println!("emp_5 : access denied : {:?}", e)
+        },
+        _ => (),
+    }
+
+    //----------------------------------------------------------------
+}
+```
+
+Output
+
+```bash
+access ok
+emp_2 : access denied : "invalid position for building access"
+emp_3 : access denied : "employee terminated"
+emp_4 : access denied : "employee terminated"
+emp_5 : access denied : "employee terminated"
+```
+
 Result -> enum : it represents success or failure
 
 ```rust
