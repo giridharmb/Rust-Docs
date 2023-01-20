@@ -2883,26 +2883,26 @@ final_results : [[("f25afb33e9276de6ebce2f674188a436001e2ae74418d4c116fe152080ae
 use serde_json::json;
 
 fn main() {
- let glenn = json!({
-    "name": "Glenn Gillen",
-    "age": 40,
-    "phones": [
-        "+61 448612567"
-    ],
-    "address": {
-        "line1": "123 Main St",
-        "state": "VIC",
-        "country": "AU"
-    }
-});
+    let glenn = json!({
+        "name": "Glenn Gillen",
+        "age": 40,
+        "phones": [
+            "+61 448612567"
+        ],
+        "address": {
+            "line1": "123 Main St",
+            "state": "VIC",
+            "country": "AU"
+        }
+    });
 
-println!("first phone number: {}", glenn["phones"][0]);
-println!("state: {}", glenn["address"]["state"]);
+    println!("first phone number: {}", glenn["phones"][0]);
+    println!("state: {}", glenn["address"]["state"]);
 
-let age  = &glenn["age"];
-println!("age : {:?}", age.as_f64().unwrap());
+    let age  = &glenn["age"];
+    println!("age : {:?}", age.as_f64().unwrap());
 
-println!("{}", glenn.to_string());
+    println!("{}", glenn.to_string());
 }
 ```
 
