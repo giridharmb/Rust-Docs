@@ -2915,6 +2915,22 @@ fn main() {
             println!("found data for key {:?} : {:?}", key2, d);
         }
     }
+
+    //----------------------------------------------------------------
+
+    // Note: Iteration order can change - each time we iterate through the map
+
+    for (person, age) in my_hashmap.iter() {
+        println!("person : {:?} , age : {:?}", person, age);
+    }
+
+    for person in my_hashmap.keys() {
+        println!("person : {:?}", person);
+    }
+
+    for age in my_hashmap.values() {
+        println!("age : {:?}", age);
+    }
 }
 ```
 
@@ -2923,4 +2939,16 @@ Output
 ```bash
 found data for key "Ed" : 13
 could not find "Peter" in map
+person : "Kathy" , age : 44
+person : "Ed" , age : 13
+person : "Will" , age : 14
+person : "Susan" , age : 22
+person : "Kathy"
+person : "Ed"
+person : "Will"
+person : "Susan"
+age : 44
+age : 13
+age : 14
+age : 22
 ```
