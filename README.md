@@ -2897,10 +2897,22 @@ fn main() {
     });
 
     println!("first phone number: {}", glenn["phones"][0]);
+
     println!("state: {}", glenn["address"]["state"]);
 
     let age  = &glenn["age"];
-    println!("age : {:?}", age.as_f64().unwrap());
+    
+    let age_float = match age.as_f64() {
+        None => {
+            println!("could not get age as float (just for experimentation)");
+            0.0
+        }
+        Some(data) => {
+            data
+        }
+    };
+
+    println!("age_float (just for experimentation) : {:?}", age_float);
 
     println!("{}", glenn.to_string());
 }
@@ -2911,7 +2923,7 @@ Output
 ```bash
 first phone number: "+61 448612567"
 state: "VIC"
-age : 40.0
+age_float (just for experimentation) : 40.0
 {"address":{"country":"AU","line1":"123 Main St","state":"VIC"},"age":40,"name":"Glenn Gillen","phones":["+61 448612567"]}
 ```
 
