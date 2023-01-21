@@ -3124,3 +3124,268 @@ fn main() {
     }
 }
 ```
+
+CLI Driven Billing Application
+
+```rust
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::io;
+use std::num::ParseFloatError;
+
+#[derive(Debug, Clone)]
+struct Bill {
+    name: String,
+    amount: f64
+}
+
+struct Bills {
+    inner: HashMap<String, Bill>
+}
+
+impl Bills {
+    fn new() -> Self {
+        Self {
+            inner: HashMap::new()
+        }
+    }
+
+    fn add(&mut self, bill: Bill) {
+        // using .clone() , because we need to have an owned string
+        self.inner.insert(bill.name.clone(), bill );
+    }
+
+    fn get_all(&self) -> Vec<Bill> {
+        let mut bills = vec![];
+        for bill in self.inner.values() {
+            bills.push(bill.clone());
+        }
+        return bills;
+    }
+
+    fn remove(&mut self, name: &str) -> bool {
+        self.inner.remove(name).is_some()
+    }
+
+    fn update(&mut self, name: &str, amount: f64) -> bool {
+        match self.inner.get_mut(name) {
+            None => {
+                false
+            }
+            Some(bill) => {
+                bill.amount = amount;
+                true
+            }
+        }
+    }
+}
+
+fn get_input() -> String  {
+    let mut buffer = String::new();
+    while io::stdin().read_line(&mut buffer).is_err() {
+        println!("please enter valid data again")
+    }
+    buffer.trim().to_owned()
+}
+
+fn main_menu() {
+    fn show() { // this fn is available only within main_menu() fn
+        println!();
+        println!("[ Manage Bills ]");
+        println!("1. Add Bill");
+        println!("2. View Bills");
+        println!("3. Remove Bill");
+        println!("4. Update Bill");
+        println!();
+        println!("Enter Selection:");
+    }
+
+    let mut bills = Bills::new();
+
+    loop {
+        show();
+        let input = get_input();
+        match input.as_str() {
+            "1" => {
+                add_bill_menu(&mut bills);
+            }
+            "2" => {
+                view_bills_menu(&bills);
+            }
+            "3" => {
+                remove_bill_menu(&mut bills);
+            }
+            "4" => {
+                update_bill_menu(&mut bills);
+            }
+            _ => {
+                break
+            }
+        }
+    }
+}
+
+fn get_bill_amount() -> f64 {
+    println!("Amount:");
+    loop {
+        let input: String = get_input();
+        let parsed_input: Result<f64, _> = input.parse();
+        match parsed_input {
+            Ok(data) => {
+                return data
+            }
+            Err(_) => {
+                println!("Please enter a valid number")
+            }
+        }
+    }
+}
+
+fn add_bill_menu(bills: &mut Bills) {
+    println!("Bill name:");
+    // get the bill name
+    let name = get_input();
+    // get the bill amount
+    let amount = get_bill_amount();
+
+    let bill = Bill { name, amount };
+
+    bills.add(bill);
+
+    println!("Bill was successfully added.")
+}
+
+fn view_bills_menu(bills: &Bills) {
+    for bill in bills.get_all() {
+        println!("{:?}", bill);
+    }
+}
+
+fn remove_bill_menu(bills: &mut Bills) {
+    for bill in bills.get_all() {
+        println!("{:?}", bill);
+    }
+    println!("Enter bill name to remove:");
+    let input = get_input();
+
+    if bills.remove(&input) {
+        println!("bill removed.")
+    } else {
+        println!("bill not found.")
+    }
+}
+
+fn update_bill_menu(bills: &mut Bills) {
+    for bill in bills.get_all() {
+        println!("{:?}", bill);
+    }
+    println!("Enter bill name to update:");
+    let name = get_input();
+
+    let amount = get_bill_amount();
+
+    if bills.update(&name, amount) {
+        println!("Bill with name {:?} updated with new value {:?}", name, amount);
+    } else {
+        println!("Bill with name {:?} could not be updated.", name);
+    }
+}
+
+fn main() {
+    main_menu();
+}
+```
+
+Sample Run
+
+```bash
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+1
+Bill name:
+bill-01
+Amount:
+10
+Bill was successfully added.
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+1
+Bill name:
+bill-02
+Amount:
+100
+Bill was successfully added.
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+2
+Bill { name: "bill-02", amount: 100.0 }
+Bill { name: "bill-01", amount: 10.0 }
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+4
+Bill { name: "bill-02", amount: 100.0 }
+Bill { name: "bill-01", amount: 10.0 }
+Enter bill name to update:
+bill-01
+Amount:
+555
+Bill with name "bill-01" updated with new value 555.0
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+2
+Bill { name: "bill-02", amount: 100.0 }
+Bill { name: "bill-01", amount: 555.0 }
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+3
+Bill { name: "bill-02", amount: 100.0 }
+Bill { name: "bill-01", amount: 555.0 }
+Enter bill name to remove:
+bill-01
+bill removed.
+
+[ Manage Bills ]
+1. Add Bill
+2. View Bills
+3. Remove Bill
+4. Update Bill
+
+Enter Selection:
+2
+Bill { name: "bill-02", amount: 100.0 }
+```
