@@ -3044,3 +3044,83 @@ this is some random test.
 original : "hello there !" , upper-case : "HELLO THERE !"
 original : "this is some random test." , upper-case : "THIS IS SOME RANDOM TEST."
 ```
+
+Another CLI Program
+
+```rust
+use std::io;
+
+enum PowerStates {
+    Off,
+    Sleep,
+    Reboot,
+    Shutdown,
+    Hibernate,
+}
+
+impl PowerStates {
+    fn new(state: &str) -> Option<PowerStates> {
+        let binding = state.trim().to_lowercase();
+        let power_state = binding.as_str();
+        match power_state {
+            "off" => {
+                Some(PowerStates::Off)
+            }
+            "sleep" => {
+                Some(PowerStates::Sleep)
+            }
+            "reboot" => {
+                Some(PowerStates::Reboot)
+            }
+            "shutdown" => {
+                Some(PowerStates::Shutdown)
+            }
+            "hibernate" => {
+                Some(PowerStates::Hibernate)
+            }
+            _ => {
+                None
+            }
+        }
+    }
+}
+
+fn print_power_action(state: PowerStates) {
+    match state {
+        PowerStates::Off => {
+            println!("powering off...");
+        },
+        PowerStates::Sleep => {
+            println!("sleeping now...");
+        },
+        PowerStates::Reboot => {
+            println!("rebooting now...");
+        },
+        PowerStates::Shutdown => {
+            println!("shutting down now...");
+        },
+        PowerStates::Hibernate => {
+            println!("hibernating now...");
+        },
+    }
+}
+
+fn main() {
+    let mut buffer = String::new();
+
+    let user_input_status = io::stdin().read_line(&mut buffer); // ? would mean, this line may fail (throw error)
+
+    if user_input_status.is_ok() {
+        match PowerStates::new(&buffer) {
+            None => {
+                println!("invalid power state.");
+            },
+            Some(d) => {
+                print_power_action(d);
+            },
+        }
+    } else {
+        println!("error reading input.");
+    }
+}
+```
