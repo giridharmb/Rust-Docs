@@ -1838,6 +1838,14 @@ into a `Box<dyn std::error::Error>` via the `?` operator.
 
 #### Rust Threading & Usage of `move` keyword
 
+There are two main types of thread in programming
+
+- 1: `Operating System Thread`
+- 2: `Green Threads` (abstraction which sits on top of OS thread)
+- Golang for example uses Green Threads (which allows lot more threads to be created )
+- Rust uses OS thread (for the sake of lower runtime, that is lower amount of code in each binary)
+- Green Threads can share data memory amongst themselves directly (although synchronization is required of course)
+
 ```rust
 use std::thread;
 
