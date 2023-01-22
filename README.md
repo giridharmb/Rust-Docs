@@ -3423,7 +3423,7 @@ mod messaging {
 
     use std::collections::HashMap;
     use serde_json::json;
-    
+
     pub(crate) fn hello() {
         println!("hello");
     }
@@ -3450,4 +3450,44 @@ fn main() {
     println!("{:?}" , math::add_nums(10,20));
     println!("{:?}" , math::multiply_nums(4, 5));
 }
+```
+
+#### Testing
+
+```rust
+fn all_caps(word: &str) -> String {
+    word.to_uppercase()
+}
+
+fn main() {
+
+}
+
+#[cfg(test)]
+mod test {
+    use crate::all_caps;
+    #[test]
+    fn check_all_caps() {
+        let result = all_caps("hello");
+        let expected = String::from("HELLO");
+        assert_eq!(result, expected, "string should have been in uppercase")
+    }
+
+    #[test]
+    fn check_all_caps_failure() {
+        let result = all_caps("hello");
+        let expected = String::from("hello");
+        assert_ne!(result, expected, "string should have been in lowercase")
+    }
+}
+```
+
+Output of `cargo test`
+
+```bash
+running 2 tests
+test test::check_all_caps_failure ... ok
+test test::check_all_caps ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
 ```
