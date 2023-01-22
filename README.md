@@ -3416,8 +3416,10 @@ fn main() {
 
 #### Modules
 
+Think of `mod { ... }` (module) as an individual file
+
 ```rust
-mod messaging {
+mod messaging { 
     pub(crate) fn hello() {
         println!("hello");
     }
