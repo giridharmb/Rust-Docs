@@ -3413,3 +3413,35 @@ fn main() {
     let result = add(10,15);
 }
 ```
+
+#### Modules
+
+```rust
+mod messaging {
+    pub(crate) fn hello() {
+        println!("hello");
+    }
+
+    pub(crate) fn goodbye() {
+        println!("goodbye !");
+    }
+}
+
+mod math {
+    pub(crate) fn add_nums(a: i32, b: i32) -> i32 {
+        a + b
+    }
+
+    pub(crate) fn multiply_nums(a: i32, b: i32) -> i32 {
+        a * b
+    }
+}
+
+fn main() {
+    messaging::hello();
+    messaging::goodbye();
+
+    println!("{:?}" , math::add_nums(10,20));
+    println!("{:?}" , math::multiply_nums(4, 5));
+}
+```
