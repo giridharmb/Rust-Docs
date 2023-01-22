@@ -3420,6 +3420,10 @@ Think of `mod { ... }` (module) as an individual file
 
 ```rust
 mod messaging { 
+
+    use std::collections::HashMap;
+    use serde_json::json;
+    
     pub(crate) fn hello() {
         println!("hello");
     }
