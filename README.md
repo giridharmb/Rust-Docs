@@ -3389,3 +3389,27 @@ Enter Selection:
 2
 Bill { name: "bill-02", amount: 100.0 }
 ```
+
+#### Closure : They are anonymous functions
+
+```rust
+fn add_fn(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+fn main() {
+    let sum = add(1, 5);
+
+    // Closures : They are anonymous functions
+    
+    // closure
+    let add = |a: i32, b: i32| -> i32 {
+        a + b
+    };
+    let result = add(5,6);
+
+    //closure
+    let add = |a,b| a + b;
+    let result = add(10,15);
+}
+```
