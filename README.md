@@ -3433,3 +3433,342 @@ fn main() {
     println!("Elapsed: {:.2?}", elapsed);
 }
 ```
+
+#### Openstack API : Fetch Compute Service List
+
+This piece of code
+
+- Makes HTTP Request To Keystone Endpoint To Get Token (Through Headers)
+- Then make HTTP (Blocking) Request (GET) Call To Nova API Endpoint
+- Fetches The Results & Stores As A JSON File
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "openstack_worker_pool"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+reqwest = { version = "0.11.13" , features = ["blocking"] } # reqwest with JSON parsing support
+tokio = { version = "1.24.1", features = ["full"] } # for our async runtime
+futures = "0.3.4" # for our async / await blocks
+serde = "1.0.152"
+serde_json = "1.0.91"
+serde_derive = "1.0.152"
+rand = "0.8.5"
+rayon = "1.6.1"
+sha256 = "1.1.1"
+```
+
+How To Run
+
+```bash
+OUSER="<USER>" OPASS="<PASS>" cargo run
+```
+
+`src/main.rs`
+
+```rust
+use std::borrow::Borrow;
+use std::collections::HashMap;
+
+use serde::Deserialize;
+use serde_json::{json, Value};
+use std::env;
+use std::fmt::{Display, Formatter};
+use std::future::Future;
+use futures::future::err;
+use reqwest::{Error};
+
+use reqwest::{Response, StatusCode};
+use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderValue, ToStrError};
+use reqwest::blocking::Client;
+
+use rand::{thread_rng, Rng};
+use rayon::prelude::*;
+use std::time::Duration;
+use rand::{distributions::Alphanumeric};
+use sha256::digest;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use std::fs::File;
+
+use std::time::Instant;
+
+#[derive(Clone, Eq, Hash, PartialEq, Debug)]
+struct Cloud {
+    region_name: String,
+    region_endpoint: String
+}
+
+impl Cloud {
+
+    fn get_region_endpoint(&self) -> String {
+        let (_, my_map) = get_cloud_mapping_v2();
+
+        match my_map.get(&self.region_name) {
+            None => { "missing".to_owned() },
+            Some(d) => {
+                match my_map.get(&self.region_name) {
+                    None => { "missing".to_owned() }
+                    Some(d) => { d.to_string() },
+                }
+            }
+        }
+    }
+
+    fn get_keystone_token(&self) -> String {
+        return match self.exec_keystone_request() {
+            Some(d) => {
+                d
+            }
+            None => {
+                println!(">> no token present");
+                "".to_owned()
+            }
+        };
+    }
+
+    fn get_creds_payload(&self, user: &str, pass: &str) -> serde_json::Value {
+        let payload_body = json!(
+            {
+                "auth":
+                {
+                    "identity":
+                    {
+                        "methods":
+                        [
+                            "password"
+                        ],
+                        "password":
+                        {
+                            "user":
+                            {
+                                "name": user,
+                                "domain":
+                                {
+                                    "name": "Default"
+                                },
+                                "password": pass
+                            }
+                        }
+                    }
+                }
+            }
+        );
+        return payload_body;
+    }
+
+    fn exec_keystone_request(&self) -> Option<String> {
+
+        let ouser = get_openstack_user();
+        if ouser == "" {
+            return None
+        }
+
+        let opass = get_openstack_pass();
+        if opass == "" {
+            return None
+        }
+
+        let payload_body = self.get_creds_payload(ouser.as_str(), opass.as_str());
+
+        let cloud_endpoint = self.get_region_endpoint();
+
+        let keystone_url = format!("https://{}:5000/v3/auth/tokens", cloud_endpoint);
+
+        let client = reqwest::blocking::Client::new();
+
+        let payload_body_str = payload_body.to_string();
+
+        let resp = client.post(keystone_url)
+            .body(payload_body_str)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/json")
+            .send();
+
+        return match resp {
+            Ok(d) => {
+                Some(d.headers().get("X-Subject-Token").unwrap().to_str().unwrap().to_string())
+            }
+            Err(e) => {
+                println!("error : {:?}", e);
+                None
+            }
+        };
+    }
+
+    fn exec_compute_service_list_request(&self) -> Option<Value> {
+
+        let token = self.get_keystone_token();
+        if token == "" {
+            println!("token missing, skipping this request...");
+            return None
+        }
+
+        let cloud_endpoint = self.get_region_endpoint();
+
+        let compute_service_request_url = format!("https://{}:8774/v2.1/os-services", cloud_endpoint);
+
+        let client = reqwest::blocking::Client::new();
+
+        let resp = client.get(compute_service_request_url)
+            .header("X-Auth-Token", token)
+            .header(ACCEPT, "application/json")
+            .header(CONTENT_TYPE, "application/json")
+            .send();
+
+        return match resp {
+            Ok(d) => {
+                println!("data : {:#?}", d);
+                let result_str = d.text().unwrap();
+                let v: Value = serde_json::from_str(result_str.as_str()).unwrap();
+                Some(v)
+            }
+            Err(e) => {
+                println!("error : {:?}", e);
+                None
+            }
+        };
+    }
+}
+
+fn compute_job(cloud: Cloud) -> String {
+    return match cloud.exec_keystone_request() {
+        Some(d) => {
+            d
+        }
+        None => {
+            println!(">> no token present <<");
+            "".to_owned()
+        }
+    };
+}
+
+fn compute_job_compute_service_list(cloud: Cloud) -> Value {
+    return match cloud.exec_compute_service_list_request() {
+        Some(d) => {
+            d
+        }
+        None => {
+            println!(">> no token present <<");
+            let data = r#"{}"#;
+            // Parse the string of data into serde_json::Value.
+            let v: Value = serde_json::from_str(data).unwrap();
+            v
+        }
+    };
+}
+
+
+fn generate_jobs() -> Vec<Cloud> {
+
+    let mut jobs = vec![];
+
+    let (cloud_region_mappings, _) = get_cloud_mapping_v2();
+
+    for item in cloud_region_mappings {
+        jobs.push(item);
+    }
+    return jobs;
+}
+
+
+fn get_cloud_mapping_v2() -> (Vec<Cloud>, HashMap<String, String>) {
+    let vec_data = get_cloud_vector();
+    let my_map = get_hashmap_v2(&vec_data);
+    return (vec_data, my_map)
+}
+
+fn get_cloud_vector() -> Vec<Cloud> {
+
+    let mut cloud_region_mappings = vec![];
+
+    // replace this with your region endpoints
+
+    cloud_region_mappings.push(Cloud{ region_name: "region01".parse().unwrap(), region_endpoint: "region01.endpoint.company.com".parse().unwrap() });
+    cloud_region_mappings.push(Cloud{ region_name: "region02".parse().unwrap(), region_endpoint: "region02.endpoint.company.com".parse().unwrap() });
+    cloud_region_mappings.push(Cloud{ region_name: "region03".parse().unwrap(), region_endpoint: "region03.endpoint.company.com".parse().unwrap() });
+    cloud_region_mappings.push(Cloud{ region_name: "region04".parse().unwrap(), region_endpoint: "region04.endpoint.company.com".parse().unwrap() });
+    cloud_region_mappings.push(Cloud{ region_name: "region05".parse().unwrap(), region_endpoint: "region05.endpoint.company.com".parse().unwrap() });
+
+    return cloud_region_mappings
+}
+
+fn get_hashmap_v2(vec_data: &Vec<Cloud>) -> HashMap<String, String> {
+    let mut my_map: HashMap<String, String> = HashMap::new();
+
+    for data in vec_data {
+        let (region_name, endpoint) = get_regionname_and_andpoint(data);
+        my_map.insert(region_name, endpoint);
+    }
+    return my_map
+}
+
+fn get_regionname_and_andpoint(mapping: &Cloud) -> (String, String) {
+    return (mapping.region_name.to_string(), mapping.region_endpoint.to_string())
+}
+
+
+fn get_openstack_user() -> String {
+    let uname = "OUSER";
+    return match env::var(uname) {
+        Ok(v) => return v,
+        Err(e) => {
+            println!("env variable 'OUSER' is not set !");
+            "".to_owned()
+        }
+    }
+}
+
+fn get_openstack_pass() -> String {
+    let opass = "OPASS";
+    return match env::var(opass) {
+        Ok(v) => v,
+        Err(e) => {
+            println!("env variable 'OPASS' is not set !");
+            "".to_owned()
+        },
+    };
+}
+
+fn main() {
+    println!("OpenStack Test");
+
+    rayon::ThreadPoolBuilder::new().num_threads(30).build_global().unwrap();
+
+    let mut my_jobs = generate_jobs();
+
+    let now = Instant::now();
+
+    let results: Vec<Value> = my_jobs.into_par_iter()
+        .map(compute_job_compute_service_list)
+        .collect();
+
+    let elapsed = now.elapsed();
+
+    println!("results : {:#?}", results);
+
+    println!("Elapsed: {:.2?}", elapsed);
+
+    let f = match File::create("results.json") {
+        Ok(d) => {
+            let write_data = match serde_json::to_writer_pretty(&d, &results) {
+                Ok(d) => {
+                    println!("data successfully written to json file !");
+                },
+                Err(e) => {
+                    println!("data could not be written to json file : {:?}", e);
+                },
+            };
+        },
+        Err(e) => {
+            println!("json file could not be created : {:?}", e);
+        },
+    };
+}
+```
