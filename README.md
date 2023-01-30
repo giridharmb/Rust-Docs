@@ -3772,3 +3772,218 @@ fn main() {
     };
 }
 ```
+
+#### Azure : Get API & Graph API Token
+
+How To Make API Calls To Public Azure Endpoints
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "azure-rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+regex = "1.7.0"
+reqwest = { version = "0.11.13" , features = ["blocking"] } # reqwest with JSON parsing support
+tokio = { version = "1.23.0", features = ["full"] }
+serde = "1.0.152"
+serde_json = "1.0.91"
+serde_derive = "1.0.152"
+rayon = "1.6.1"
+futures = "0.3.4" # for our async / await blocks
+```
+
+File `src/main.rs`
+
+```rust
+use std::collections::HashMap;
+use reqwest::{Response, StatusCode};
+use serde_json::{Map, Value};
+
+
+#[derive(Debug)]
+pub enum GenericError {
+    InvalidServicePrincipal,
+    MissingDataInResponse,
+}
+
+#[derive(Debug)]
+struct CustomError {
+    err_type: GenericError,
+    err_msg: String
+}
+
+enum TokenType {
+    AzureApiToken,
+    AzureGraphToken,
+}
+
+// pub type ResultToken = Result<String, CustomError>;
+
+struct ServicePrincipal {
+    client_id: String,
+    client_secret: String,
+    tenant_id: String,
+    region: String,
+    token_type: TokenType
+}
+
+impl ServicePrincipal {
+    fn get_token(&self, token_type: TokenType) -> Result<String, CustomError> {
+        let region = &self.region;
+        let client_id = &self.client_id;
+        let client_secret = &self.client_secret;
+        let region = &self.region;
+        let tenant_id = &self.tenant_id;
+
+        let azure_region_details = get_azure_region_details(region);
+
+        let authority_url = match token_type {
+            TokenType::AzureApiToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/token";
+                authority_url
+            },
+            TokenType::AzureGraphToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/v2.0/token";
+                authority_url
+            },
+        };
+
+        println!("authority_url : {:?}", authority_url);
+
+        let resource_api: String = azure_region_details.get("resourceAPI").unwrap().to_string();
+
+        let scope = azure_region_details.get("resourceGraphURL").unwrap().to_string();
+
+        println!("resource_api : {:?}", resource_api);
+
+        let params = match token_type {
+            TokenType::AzureApiToken => {
+                let params = [
+                    ("grant_type", "client_credentials"),
+                    ("client_id", client_id),
+                    ("client_secret", client_secret),
+                    ("resource", ""),
+                ];
+                params
+            },
+            TokenType::AzureGraphToken => {
+                let params = [
+                    ("grant_type", "client_credentials"),
+                    ("client_id", client_id),
+                    ("client_secret", client_secret),
+                    ("scope", scope.as_str()),
+                ];
+                params
+            }
+        };
+
+
+        let client = reqwest::blocking::Client::new();
+
+        let res = client.post(authority_url).form(&params).send();
+
+        let result =  match res {
+            Ok(res) => {
+                println!("http response : {:?}", res);
+                let data_str = res.text().unwrap_or("N/A".to_string());
+                let value: Value = serde_json::from_str(data_str.as_str()).unwrap();
+
+                let my_object = match value.as_object() {
+                    None => {
+                        println!("no object found")
+                    },
+                    Some(d) => {
+                        if d.contains_key("token_type") == false || d.contains_key("access_token") == false {
+                            let msg:String = format!("http response does not contains either the follow keys : (token_type|access_token)");
+                            let custom_err = CustomError {
+                                err_msg: String::from(msg),
+                                err_type: GenericError::MissingDataInResponse
+                            };
+                            return Err(custom_err)
+                        }
+                    }
+                };
+
+                let token = format!("{} {}", &value["token_type"].as_str().unwrap(), &value["access_token"].as_str().unwrap());
+                token
+            },
+            Err(err) => {
+                let msg:String = format!("there was an error http form submit to get token {:?}", err);
+                let custom_err = CustomError {
+                    err_msg: String::from(msg),
+                    err_type: GenericError::InvalidServicePrincipal
+                };
+                return Err(custom_err)
+            }
+        };
+        Ok(result)
+    }
+}
+
+
+fn get_azure_region_details(region: &str) -> HashMap<String, String> {
+    let mut azure_region: HashMap<String, String> = HashMap::new();
+
+    return match region {
+        "america" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        },
+        "china" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.chinacloudapi.cn".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.partner.microsoftonline.cn".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://microsoftgraph.chinacloudapi.cn/.default".to_owned());
+            azure_region
+        },
+        _ => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        }
+    }
+}
+
+fn main() {
+    println!("Azure Data >");
+
+    let service_principal = ServicePrincipal {
+        client_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+        client_secret: "<INSERT_SECRET_HERE>".to_owned(),
+        region: "america".to_owned(),
+        tenant_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+        token_type: TokenType::AzureApiToken,
+    };
+
+    // api token
+    let api_token = match service_principal.get_token(TokenType::AzureApiToken) {
+        Ok(data) => {
+            println!("\ntoken\n");
+            println!("{}\n", data);
+        }
+        Err(e) => {
+            println!("error : {:#?}", e);
+        }
+    };
+
+    // graph token
+    let graph_token = match service_principal.get_token(TokenType::AzureGraphToken) {
+        Ok(data) => {
+            println!("\ntoken\n");
+            println!("{}\n", data);
+        }
+        Err(e) => {
+            println!("error : {:#?}", e);
+        }
+    };
+}
+```
