@@ -3775,7 +3775,7 @@ fn main() {
 
 #### Azure : Get API & Graph API Token
 
-How To Make API Calls To Public Azure Endpoints
+How To Make API Calls To Public Azure Endpoints (Still, Work In Progress)
 
 `Cargo.toml`
 
@@ -3985,5 +3985,314 @@ fn main() {
             println!("error : {:#?}", e);
         }
     };
+}
+```
+
+Fetching Virtual Machines (Still, Work In Progress)
+
+```rust
+use std::collections::HashMap;
+use reqwest::{Response, StatusCode};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use serde_json::{json, Map, Value};
+use std::{thread, time};
+
+#[derive(Debug)]
+pub enum GenericError {
+    InvalidServicePrincipal,
+    MissingDataInResponse,
+}
+
+#[derive(Debug)]
+struct CustomError {
+    err_type: GenericError,
+    err_msg: String
+}
+
+enum TokenType {
+    AzureApiToken,
+    AzureGraphToken,
+}
+
+// pub type ResultToken = Result<String, CustomError>;
+
+struct ServicePrincipal {
+    client_id: String,
+    client_secret: String,
+    tenant_id: String,
+    region: String,
+    token_type: TokenType
+}
+
+// microsoft public api endpoints
+
+fn get_azure_region_details(region: &str) -> HashMap<String, String> {
+    let mut azure_region: HashMap<String, String> = HashMap::new();
+
+    return match region {
+        "america" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        },
+        "china" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.chinacloudapi.cn".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.partner.microsoftonline.cn".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://microsoftgraph.chinacloudapi.cn/.default".to_owned());
+            azure_region
+        },
+        _ => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        }
+    }
+}
+
+
+impl ServicePrincipal {
+
+    fn get_params_and_url(&self, token_type: TokenType, azure_scope: Option<String>) -> ([(String, String); 4], String, String, String) {
+        let region = &self.region;
+        let client_id = &self.client_id;
+        let tenant_id = &self.tenant_id;
+        let client_secret = &self.client_secret;
+
+        let azure_region_details = get_azure_region_details(region.as_str());
+
+        let authority_url = match token_type {
+            TokenType::AzureApiToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/token";
+                authority_url
+            },
+            TokenType::AzureGraphToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/v2.0/token";
+                authority_url
+            },
+        };
+
+        let resource_graph_url = azure_region_details.get("resourceGraphURL").unwrap().to_string();
+
+        let resource_api_url = azure_region_details.get("resourceAPI").unwrap().to_string();
+
+        // println!("authority_url      : {:?}", authority_url);
+        // println!("resource_graph_url : {:?}", resource_graph_url);
+        // println!("resource_api_url   : {:?}", resource_api_url);
+
+        let my_scope = match azure_scope {
+            None => {
+                println!("azure_scope is None !");
+                "https://graph.microsoft.com/.default".to_owned()
+            },
+            Some(d) => {
+                d.to_owned()
+            },
+        };
+
+        let params = match token_type {
+            TokenType::AzureApiToken => {
+                let params = [
+                    ("grant_type".to_string(), "client_credentials".to_string()),
+                    ("client_id".to_string(), client_id.to_string()),
+                    ("client_secret".to_string(), client_secret.to_string()),
+                    ("resource".to_string(), "".to_string()),
+                ];
+                params
+            },
+            TokenType::AzureGraphToken => {
+                let params = [
+                    ("grant_type".to_string(), "client_credentials".to_string()),
+                    ("client_id".to_string(), client_id.to_string()),
+                    ("client_secret".to_string(), client_secret.to_string()),
+                    ("scope".to_string(), my_scope.to_string()),
+                ];
+                params
+            }
+        };
+        let return_data = (params, authority_url, resource_graph_url, resource_api_url);
+        // println!("{:#?}", &return_data);
+        return return_data;
+    }
+
+    fn get_token(&self, token_type: TokenType, azure_scope: Option<String>) -> Result<String, CustomError> {
+        let region = &self.region;
+        let client_id = &self.client_id;
+        let client_secret = &self.client_secret;
+        let region = &self.region;
+        let tenant_id = &self.tenant_id;
+
+        let my_scope = Some("https://management.azure.com/.default".to_string());
+
+        let my_scope = match azure_scope {
+            None => {
+                println!("azure_scope is None !");
+                "https://graph.microsoft.com/.default".to_owned()
+            },
+            Some(d) => {
+                d.to_owned()
+            },
+        };
+
+        let (
+            params,
+            authority_url,
+            resource_graph_url,
+            resource_api_url
+        ) = self.get_params_and_url(token_type, Some(my_scope));
+
+        let client = reqwest::blocking::Client::new();
+
+        let res = client.post(authority_url).form(&params).send();
+
+        let result =  match res {
+            Ok(res) => {
+                println!("http response : {:?}", res);
+                let data_str = res.text().unwrap_or("N/A".to_string());
+                let value: Value = serde_json::from_str(data_str.as_str()).unwrap();
+
+                let my_object = match value.as_object() {
+                    None => {
+                        println!("no object found");
+                    },
+                    Some(d) => {
+                        if d.contains_key("token_type") == false || d.contains_key("access_token") == false {
+                            let msg:String = format!("http response does not contains either the follow keys : (token_type|access_token)");
+                            let custom_err = CustomError {
+                                err_msg: String::from(msg),
+                                err_type: GenericError::MissingDataInResponse
+                            };
+                            return Err(custom_err)
+                        }
+                    }
+                };
+
+                let token = format!("{} {}", &value["token_type"].as_str().unwrap(), &value["access_token"].as_str().unwrap());
+                token
+            },
+            Err(err) => {
+                let msg:String = format!("there was an error http form submit to get token {:?}", err);
+                let custom_err = CustomError {
+                    err_msg: String::from(msg),
+                    err_type: GenericError::InvalidServicePrincipal
+                };
+                return Err(custom_err)
+            }
+        };
+        Ok(result)
+    }
+
+    fn get_vms(&self) {
+
+        let my_scope = Some("https://management.azure.com/.default".to_owned());
+
+        let (
+            params,
+            authority_url,
+            resource_graph_url,
+            resource_api_url
+        ) = self.get_params_and_url(TokenType::AzureGraphToken, my_scope.to_owned());
+
+        let api_url = resource_api_url.to_owned() + "/providers/Microsoft.ResourceGraph/resources?api-version=2020-04-01-preview";
+
+        println!("api_url for azure_data_explorer : {}", api_url.as_str());
+
+        let empty:Vec<String> = vec![];
+
+        /*
+            0 - 999      -> first page
+            1000 - 1999  -> second page
+            2000 - 2999  -> third page
+            3000 - 3999  -> fourth page
+
+            $top -> The maximum number of rows that the query should return. Overrides the page size when $skipToken property is present.
+            $skip -> The number of rows to skip from the beginning of the results. Overrides the next page offset when $skipToken property is present.
+        */
+
+        let json_payload = json!({
+            "subscriptions": empty,
+            "options" : {
+                "$top" : 1000, // usually fixed at 1000
+                "$skip" : 0
+            },
+            "query": "Resources | where type =~ 'Microsoft.Compute/virtualMachines'"
+
+            // "query": "Resources | project id, name, type, location | where type =~ 'Microsoft.Compute/virtualMachines' | limit 10"
+        });
+
+        println!("json_payload:");
+        println!("{:#?}", json_payload);
+
+        let token_data = match self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()) {
+            Ok(d) => {
+                let client = reqwest::blocking::Client::new();
+
+                let token = d.to_owned();
+                println!("token for azure_data_explorer : {}", token.as_str());
+
+                let now = time::Instant::now();
+
+                let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
+                    Ok(d) => {
+                        let elapsed = now.elapsed();
+
+                        println!("azure_data_explorer query result:");
+                        let json_str = d.text().unwrap();
+                        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+
+                        // uncomment this to see the records
+                        // println!("{:#?}", json_data["data"]["rows"]);
+
+                        let total_records = &json_data["data"]["rows"].as_array().unwrap().len();
+                        println!("Total Records Fetched : {}",  total_records);
+                        println!("Total Time Taken : {:.2?}", elapsed);
+                    },
+                    Err(e) => {
+                        println!("error : could not make http request for adx query : {:?}", e);
+                    },
+                };
+            },
+            Err(e) => {
+                println!("error : could not fetch token : {:#?}", e);
+            },
+        };
+    }
+}
+
+fn main() {
+    println!("Azure Data >");
+
+    let service_principal = ServicePrincipal {
+        client_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+        client_secret: "<INSERT_SECRET_HERE>".to_owned(),
+        region: "america".to_owned(),
+        tenant_id: "00000000-0000-0000-0000-000000000000".to_owned(),
+        token_type: TokenType::AzureApiToken,
+    };
+
+    // api token
+    let api_token = match service_principal.get_token(TokenType::AzureApiToken, None) {
+        Ok(data) => {
+            println!("\ntoken\n");
+            println!("{}\n", data);
+        }
+        Err(e) => {
+            println!("error : {:#?}", e);
+        }
+    };
+
+    // graph token
+    let graph_token = match service_principal.get_token(TokenType::AzureGraphToken, None) {
+        Ok(data) => {
+            println!("\ntoken\n");
+            println!("{}\n", data);
+        }
+        Err(e) => {
+            println!("error : {:#?}", e);
+        }
+    };
+
+    service_principal.get_vms();
 }
 ```
