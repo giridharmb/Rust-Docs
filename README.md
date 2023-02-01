@@ -3988,7 +3988,7 @@ fn main() {
 }
 ```
 
-Fetching Virtual Machines (Still, Work In Progress)
+Fetching Virtual Machines : Azure Resource Graph Query (ADX) : (FYI : Still, Work In Progress)
 
 ```rust
 use std::collections::HashMap;
