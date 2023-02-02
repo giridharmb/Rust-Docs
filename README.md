@@ -1,5 +1,9 @@
 #### Notes
 
+Rust Playground
+
+https://play.rust-lang.org/
+
 Please have a look the following file for code snippets/samples
 
 #### [src/main.rs](https://github.com/giridharmb/rust-app1/blob/master/src/main.rs)
@@ -4295,4 +4299,60 @@ fn main() {
 
     service_principal.get_vms();
 }
+```
+
+#### Split Into Multiple Chunks
+
+```rust
+fn main() {
+    let input: Vec<_> = (0..27).collect();
+    let result: Vec<_> = input.chunks(5).collect();
+    println!("{:?}", result);
+}
+```
+
+Output
+
+```bash
+[
+    [
+        0,
+        1,
+        2,
+        3,
+        4,
+    ],
+    [
+        5,
+        6,
+        7,
+        8,
+        9,
+    ],
+    [
+        10,
+        11,
+        12,
+        13,
+        14,
+    ],
+    [
+        15,
+        16,
+        17,
+        18,
+        19,
+    ],
+    [
+        20,
+        21,
+        22,
+        23,
+        24,
+    ],
+    [
+        25,
+        26,
+    ],
+]
 ```
