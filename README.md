@@ -4400,14 +4400,9 @@ enum TokenType {
     AzureGraphToken,
 }
 
+#[derive(Clone, Copy)]
 enum AzureRecord {
     VirtualMachine
-}
-
-impl AzureRecord {
-    fn get_total_records(&self) {
-
-    }
 }
 
 // pub type ResultToken = Result<String, CustomError>;
@@ -4720,6 +4715,60 @@ impl ServicePrincipal {
         };
         azure_data
     }
+
+    fn get_all_azure_records(&self, azure_record: AzureRecord, records_per_page: i32, write_json_to_file: bool) -> Vec<Value> {
+        let total_records_for_virtual_machines = self.get_total_records(azure_record);
+
+        // let page_number = 1;
+
+        // let records_per_page = 1000;
+
+        let total_pages = (total_records_for_virtual_machines as f32 / records_per_page as f32).ceil() as i32;
+
+        println!("records_per_page : {}", records_per_page);
+        println!("total_pages : {}", total_pages);
+
+        let mut all_records: Vec<Value> = Vec::new();
+
+        let now = time::Instant::now();
+
+        let mut page_list: Vec<i32> = Vec::new();
+
+        for i in 1..=total_pages {
+            page_list.push(i);
+        }
+
+        let result: Vec<_> = page_list.chunks(8).collect();
+        println!("{:#?}", result);
+
+        for page_number in 1..=total_pages {
+            println!("fetching data for page_number : {}...", page_number);
+
+            let skip = get_skip_number(records_per_page, page_number);
+
+            let records = self.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
+            println!("total records for page_number {} : {}", page_number, records.len());
+            for item in records.iter() {
+                &all_records.push(item.to_owned());
+            }
+            println!("iteration in progress : length of all_records : {}", &all_records.len());
+            let elapsed = now.elapsed();
+            println!("total time taken so far : {:.2?}", elapsed);
+        }
+
+        println!("length of all_records : {}", &all_records.len());
+
+        if write_json_to_file {
+            let azure_entity = get_azure_record(azure_record);
+            let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
+
+            std::fs::write(
+            output_file,
+        serde_json::to_string_pretty(&all_records).unwrap(),
+            ).unwrap();
+        }
+        all_records
+    }
 }
 
 enum EnvironmentVarible {
@@ -4808,53 +4857,8 @@ fn main() {
         }
     };
 
-    let total_records_for_virtual_machines = service_principal.get_total_records(AzureRecord::VirtualMachine);
-
-    // let page_number = 1;
-    let records_per_page = 1000;
-    let total_pages = (total_records_for_virtual_machines as f32 / records_per_page as f32).ceil() as i32;
-
-    println!("records_per_page : {}", records_per_page);
-    println!("total_pages : {}", total_pages);
-
-    let mut all_records: Vec<Value> = Vec::new();
-
-    let now = time::Instant::now();
-
-    let mut page_list: Vec<i32> = Vec::new();
-
-    for i in 1..=total_pages {
-        page_list.push(i);
-    }
-
-    let result: Vec<_> = page_list.chunks(8).collect();
-    println!("{:#?}", result);
-
-    for page_number in 1..=total_pages {
-        println!("fetching data for page_number : {}...", page_number);
-
-        let skip = get_skip_number(records_per_page, page_number);
-
-        let records = service_principal.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
-        println!("total records for page_number {} : {}", page_number, records.len());
-        for item in records.iter() {
-            &all_records.push(item.to_owned());
-        }
-        println!("iteration in progress : length of all_records : {}", &all_records.len());
-        let elapsed = now.elapsed();
-        println!("total time taken so far : {:.2?}", elapsed);
-    }
-
-    println!("length of all_records : {}", &all_records.len());
-
-    let azure_entity = "microsoft.compute/virtualmachines";
-
-    let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
-
-    std::fs::write(
-        output_file,
-        serde_json::to_string_pretty(&all_records).unwrap(),
-    ).unwrap();
+    let all_recs = service_principal.get_all_azure_records(AzureRecord::VirtualMachine,1000,true);
+    println!("all_recs.len() : {}", all_recs.len())
 
 }
 
