@@ -1100,6 +1100,32 @@ fn run_game() -> Option<()> {
 Note : `?` above, that is <br/>
 `lookup_player(1)?` : This will return `None`, If `lookup_player(1)` returns `None`.
 
+#### Date Time
+
+```rust
+use chrono::prelude::*;
+
+fn main() {
+    let now = Utc::now();
+    let ts: i64 = now.timestamp();
+    
+    println!("Current timestamp is: {}", ts);
+    
+    let nt = NaiveDateTime::from_timestamp(ts, 0);
+    let dt: DateTime<Utc> = DateTime::from_utc(nt, Utc);
+    let res = dt.format("%Y-%m-%d %H:%M:%S");
+    
+    println!("Date time: {}", res);
+}
+```
+
+Output
+
+```bash
+Current timestamp is: 1675811880
+Date time: 2023-02-07 23:18:00
+```
+
 #### Option Example
 
 ```rust
