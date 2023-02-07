@@ -6124,3 +6124,803 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
     all_records
 }
 ```
+
+Fetching Virtual Machines : Azure Resource Graph Query (ADX) , Using Cache & Multiple Threads : With BQ Inserts : Part-5
+
+Export Environment Variables
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="$HOME/svc-account.json"
+export PROJECT_ID="<PRIJECT_ID>"
+export DATASET_ID="<GCP_DATASET>"
+export TABLE_ID="<TABLE_NAME>"
+```
+
+For this code to work, on GCP BigQuery table we have
+
+```bash
+- id       -> column type : STRING
+- metadata -> column type : JSON
+- datetime -> column type : DATETIME
+- entity   -> column type : STRING
+```
+
+`src/main.rs`
+
+```rust
+use std::collections::HashMap;
+use reqwest::{ClientBuilder, Response, StatusCode};
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE};
+use serde_json::{json, Map, Value};
+use serde::Serialize;
+
+use chrono;
+use std::{env,time};
+use std::borrow::Borrow;
+use std::slice::Chunks;
+use moka::sync::Cache;
+use std::time::Duration;
+use std::sync::mpsc;
+use lazy_static::lazy_static;
+use std::{thread};
+use std::sync::mpsc::SendError;
+use gcp_bigquery_client::Client;
+use gcp_bigquery_client::model::table::Table;
+use gcp_bigquery_client::model::table_data_insert_all_request::TableDataInsertAllRequest;
+use gcp_bigquery_client::model::table_data_insert_all_response::TableDataInsertAllResponse;
+use gcp_bigquery_client::model::table_field_schema::TableFieldSchema;
+use gcp_bigquery_client::model::table_schema::TableSchema;
+// use crossbeam_utils::thread;
+use crate::AzureRecord::VirtualMachine;
+
+use reqwest_middleware::{ClientWithMiddleware};
+use reqwest_middleware::ClientBuilder as ReqwestClientBuilder;
+use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
+use serde_derive::Deserialize;
+
+use chrono::prelude::*;
+
+#[derive(Debug)]
+pub enum GenericError {
+    InvalidServicePrincipal,
+    MissingDataInResponse,
+}
+
+#[derive(Debug)]
+struct CustomError {
+    err_type: GenericError,
+    err_msg: String
+}
+
+#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+enum TokenType {
+    AzureApiToken,
+    AzureGraphToken,
+}
+
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+enum AzureRecord {
+    VirtualMachine
+}
+
+#[derive(Clone)]
+struct ServicePrincipal {
+    client_id: String,
+    client_secret: String,
+    tenant_id: String,
+    region: String,
+    token_type: TokenType
+}
+
+// global variable
+
+lazy_static! {
+    static ref APP_CACHE:Cache<TokenAndScope, String> = Cache::builder()
+        // Time to live (TTL): 45 minutes
+        .time_to_live(Duration::from_secs(45 * 60))
+        // Time to idle (TTI):  45 minutes
+        .time_to_idle(Duration::from_secs(45 * 60))
+        // Create the cache.
+        .build();
+
+    static ref APP_CACHE_TOTAL_RECORDS:Cache<AzRecord, u64> = Cache::builder()
+        // Time to live (TTL): 45 minutes
+        .time_to_live(Duration::from_secs(45 * 60))
+        // Time to idle (TTI):  45 minutes
+        .time_to_idle(Duration::from_secs(45 * 60))
+        // Create the cache.
+        .build();
+
+    // static ref reqwest_retry_policy = ExponentialBackoff::builder().build_with_max_retries(10);
+}
+
+impl PartialEq<Self> for AzRecord {
+    fn eq(&self, other: &Self) -> bool {
+        self.azure_record == other.azure_record
+    }
+}
+
+#[derive(Hash, Clone, Eq)]
+struct AzRecord {
+    azure_record: AzureRecord
+}
+
+#[derive(PartialEq, Eq, Hash, Clone)]
+struct TokenAndScope {
+    token_type: TokenType,
+    azure_scope: Option<String>
+}
+
+// microsoft public api endpoints
+
+fn get_azure_region_details(region: &str) -> HashMap<String, String> {
+    let mut azure_region: HashMap<String, String> = HashMap::new();
+
+    return match region {
+        "america" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        },
+        "china" => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.chinacloudapi.cn".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.partner.microsoftonline.cn".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://microsoftgraph.chinacloudapi.cn/.default".to_owned());
+            azure_region
+        },
+        _ => {
+            azure_region.insert("resourceAPI".to_owned(), "https://management.azure.com".to_owned());
+            azure_region.insert("authorityURL".to_owned(), "https://login.microsoftonline.com".to_owned());
+            azure_region.insert("resourceGraphURL".to_owned(), "https://graph.microsoft.com/.default".to_owned());
+            azure_region
+        }
+    }
+}
+
+fn get_azure_record(azure_record: AzureRecord) -> String {
+    return match azure_record {
+        AzureRecord::VirtualMachine => "microsoft.compute/virtualmachines".to_owned(),
+    }
+}
+
+impl ServicePrincipal {
+
+    fn get_params_and_url(&self, token_type: TokenType, azure_scope: Option<String>) -> ([(String, String); 4], String, String, String) {
+        let region = &self.region;
+        let client_id = &self.client_id;
+        let tenant_id = &self.tenant_id;
+        let client_secret = &self.client_secret;
+
+        let azure_region_details = get_azure_region_details(region.as_str());
+
+        let authority_url = match token_type {
+            TokenType::AzureApiToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/token";
+                authority_url
+            },
+            TokenType::AzureGraphToken => {
+                let authority_url: String = azure_region_details.get("authorityURL").unwrap().to_string() + "/" + tenant_id +  "/oauth2/v2.0/token";
+                authority_url
+            },
+        };
+
+        let resource_graph_url = azure_region_details.get("resourceGraphURL").unwrap().to_string();
+
+        let resource_api_url = azure_region_details.get("resourceAPI").unwrap().to_string();
+
+        // println!("authority_url      : {:?}", authority_url);
+        // println!("resource_graph_url : {:?}", resource_graph_url);
+        // println!("resource_api_url   : {:?}", resource_api_url);
+
+        let my_scope = match azure_scope {
+            None => {
+                println!("azure_scope is None !");
+                "https://graph.microsoft.com/.default".to_owned()
+            },
+            Some(d) => {
+                d.to_owned()
+            },
+        };
+
+        let params = match token_type {
+            TokenType::AzureApiToken => {
+                let params = [
+                    ("grant_type".to_string(), "client_credentials".to_string()),
+                    ("client_id".to_string(), client_id.to_string()),
+                    ("client_secret".to_string(), client_secret.to_string()),
+                    ("resource".to_string(), "".to_string()),
+                ];
+                params
+            },
+            TokenType::AzureGraphToken => {
+                let params = [
+                    ("grant_type".to_string(), "client_credentials".to_string()),
+                    ("client_id".to_string(), client_id.to_string()),
+                    ("client_secret".to_string(), client_secret.to_string()),
+                    ("scope".to_string(), my_scope.to_string()),
+                ];
+                params
+            }
+        };
+        let return_data = (params, authority_url, resource_graph_url, resource_api_url);
+        // println!("{:#?}", &return_data);
+        return return_data;
+    }
+
+    fn get_token(&self, token_type: TokenType, azure_scope: Option<String>) -> Result<String, CustomError> {
+
+        let token_type_and_scope = TokenAndScope { token_type: token_type.to_owned(), azure_scope: azure_scope.to_owned() };
+
+        let my_token = match APP_CACHE.get(&token_type_and_scope) {
+            None => {
+                println!("MISSING_TOKEN in APP_CACHE");
+                "".to_owned()
+            }
+            Some(d) => {
+                // println!("APP_CACHE : token : {}", d);
+                d
+            }
+        };
+
+        if my_token != "" {
+            return Ok(my_token)
+        }
+
+        let region = &self.region;
+        let client_id = &self.client_id;
+        let client_secret = &self.client_secret;
+        let region = &self.region;
+        let tenant_id = &self.tenant_id;
+
+        let my_scope = Some("https://management.azure.com/.default".to_string());
+
+        let my_scope = match azure_scope {
+            None => {
+                println!("azure_scope is None !");
+                "https://graph.microsoft.com/.default".to_owned()
+            },
+            Some(d) => {
+                d.to_owned()
+            },
+        };
+
+        let (
+            params,
+            authority_url,
+            resource_graph_url,
+            resource_api_url
+        ) = self.get_params_and_url(token_type, Some(my_scope));
+
+        let client = reqwest::blocking::Client::new();
+
+        let res = client.post(authority_url).form(&params).send();
+
+        let result =  match res {
+            Ok(res) => {
+                println!("http response : {:?}", res);
+                let data_str = res.text().unwrap_or("N/A".to_string());
+                let value: Value = serde_json::from_str(data_str.as_str()).unwrap();
+
+                let my_object = match value.as_object() {
+                    None => {
+                        println!("no object found");
+                    },
+                    Some(d) => {
+                        if d.contains_key("token_type") == false || d.contains_key("access_token") == false {
+                            let msg:String = format!("http response does not contains either the follow keys : (token_type|access_token)");
+                            let custom_err = CustomError {
+                                err_msg: String::from(msg),
+                                err_type: GenericError::MissingDataInResponse
+                            };
+                            return Err(custom_err)
+                        }
+                    }
+                };
+
+                let token = format!("{} {}", &value["token_type"].as_str().unwrap(), &value["access_token"].as_str().unwrap());
+                token
+            },
+            Err(err) => {
+                let msg:String = format!("there was an error http form submit to get token {:?}", err);
+                let custom_err = CustomError {
+                    err_msg: String::from(msg),
+                    err_type: GenericError::InvalidServicePrincipal
+                };
+                return Err(custom_err)
+            }
+        };
+        println!("Storing api_token : {} , in APP_CACHE", result.to_owned());
+        APP_CACHE.insert(token_type_and_scope, result.to_owned());
+        Ok(result)
+    }
+
+    fn get_total_records(&self, azure_record: AzureRecord) -> u64 {
+
+        let az_record = AzRecord { azure_record: azure_record.to_owned() };
+
+        let total_records_from_cache = match APP_CACHE_TOTAL_RECORDS.get(&az_record) {
+            None => {
+                println!("__FUNC__ : get_total_records() : MISSING_TOTAL_RECORDS in APP_CACHE_TOTAL_RECORDS");
+                0
+            }
+            Some(d) => {
+                println!("__FUNC__ : get_total_records() : APP_CACHE_TOTAL_RECORDS : total_records_from_cache : {}", d);
+                d
+            }
+        };
+
+        if total_records_from_cache != 0 {
+            println!("__FUNC__ : get_total_records() : total_records_from_cache : {}", total_records_from_cache);
+            return total_records_from_cache
+        }
+
+        println!("__FUNC__ : data not found in cache !");
+
+        //----------------------------------------------------------------------------------------
+
+        let my_scope = Some("https://management.azure.com/.default".to_owned());
+
+        let (
+            params,
+            authority_url,
+            resource_graph_url,
+            resource_api_url
+        ) = self.get_params_and_url(TokenType::AzureGraphToken, my_scope.to_owned());
+
+        let api_url = resource_api_url.to_owned() + "/providers/Microsoft.ResourceGraph/resources?api-version=2020-04-01-preview";
+
+        println!("api_url for azure_data_explorer : {}", api_url.as_str());
+
+        let empty:Vec<String> = vec![];
+
+        let record_name = get_azure_record(azure_record);
+
+        let total_records_query = format!("Resources | where type == '{}' | summarize count()", record_name);
+
+        let json_payload = json!({
+            "subscriptions": empty,
+            "query": total_records_query
+        });
+
+        println!("json_payload:");
+        println!("{:#?}", json_payload);
+
+        let total_records = match self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()) {
+            Ok(d) => {
+                let client = reqwest::blocking::Client::new();
+                let token = d.to_owned();
+                println!("token for azure_data_explorer : {}", token.as_str());
+                let now = time::Instant::now();
+                let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
+                    Ok(d) => {
+                        let elapsed = now.elapsed();
+                        let json_str = d.text().unwrap();
+                        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+                        println!("{}", serde_json::to_string_pretty(&json_data).unwrap());
+                        let total_records = &json_data["data"]["rows"][0][0].as_u64().unwrap();
+                        println!("total_records : {}", total_records);
+                        println!("TTT : {:.2?}", elapsed);
+                        total_records.to_owned()
+                    },
+                    Err(e) => {
+                        println!("error : could not make http request for adx query : {:?}", e);
+                        0 as u64
+                    },
+                };
+                res
+            }, // Ok
+            Err(e) => {
+                println!("error : could not fetch token : {:#?}", e);
+                0
+            }, // Err
+        };
+        APP_CACHE_TOTAL_RECORDS.insert(az_record, total_records.to_owned());
+        println!("__FUNC__ : get_total_records() : total_records : {}", total_records_from_cache);
+        total_records
+    }
+
+    fn get_azure_records(&self, azure_record: AzureRecord, top: i32, skip: i32) -> Vec<Value> {
+
+        let my_scope = Some("https://management.azure.com/.default".to_owned());
+
+        let empty_vec:Vec<Value> = Vec::new();
+
+        let (
+            params,
+            authority_url,
+            resource_graph_url,
+            resource_api_url
+        ) = self.get_params_and_url(TokenType::AzureGraphToken, my_scope.to_owned());
+
+        let api_url = resource_api_url.to_owned() + "/providers/Microsoft.ResourceGraph/resources?api-version=2020-04-01-preview";
+
+        println!("api_url for azure_data_explorer : {}", api_url.as_str());
+
+        let empty:Vec<String> = vec![];
+
+        /*
+            0 - 999      -> first page
+            1000 - 1999  -> second page
+            2000 - 2999  -> third page
+            3000 - 3999  -> fourth page
+
+            $top -> The maximum number of rows that the query should return. Overrides the page size when $skipToken property is present.
+            $skip -> The number of rows to skip from the beginning of the results. Overrides the next page offset when $skipToken property is present.
+        */
+
+        let azure_entity = get_azure_record(azure_record);
+
+        let query = format!("Resources | where type =~ '{}'", azure_entity);
+
+        let json_payload = json!({
+            "subscriptions": empty,
+            "options" : {
+                "$top" : top, // usually fixed at 1000
+                "$skip" : skip
+            },
+            "query": query
+        });
+
+        println!("{}", serde_json::to_string_pretty(&json_payload).unwrap());
+
+        let azure_data = match self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()) {
+            Ok(d) => {
+
+                let client = reqwest::blocking::Client::new();
+
+                let token = d.to_owned();
+                let now = time::Instant::now();
+
+                let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
+                    Ok(d) => {
+                        let elapsed = now.elapsed();
+
+                        println!("azure_data_explorer query result:");
+                        let json_str = d.text().unwrap();
+                        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+                        let rows = &json_data["data"]["rows"];
+
+                        println!("TTT (top : {} , skip : {}) : {:.2?}", top, skip, elapsed);
+
+                        let row_data = match rows.as_array() {
+                            None => {
+                                println!("oops : could not find any row data !");
+                                empty_vec
+                            },
+                            Some(d) => {
+                                println!("found rows !");
+                                d.to_vec()
+                            },
+                        };
+                        row_data
+                    },
+                    Err(e) => {
+                        println!("error : could not make http request for adx query : {:?}", e);
+                        empty_vec
+                    },
+                };
+                res.to_owned()
+            },
+            Err(e) => {
+                println!("error : could not fetch token : {:#?}", e);
+                empty_vec
+            },
+        };
+        azure_data
+    }
+
+    fn get_total_pages_for_all_records(&self, azure_record: AzureRecord, records_per_page: i32) -> i32 {
+        let total_records_for_virtual_machines = self.get_total_records(azure_record);
+        let total_pages = (total_records_for_virtual_machines as f32 / records_per_page as f32).ceil() as i32;
+        println!("__FUNC__ : get_total_pages_for_all_records() : {}", total_pages);
+        total_pages
+    }
+
+    fn get_all_azure_records_for_page(&self, page_number: i32, azure_record: AzureRecord, records_per_page: i32) -> Vec<Value> {
+        let total_pages = self.get_total_pages_for_all_records(azure_record, records_per_page);
+        let mut all_records: Vec<Value> = Vec::new();
+        let now = time::Instant::now();
+        println!("__FUNC__: get_all_azure_records_for_page() : fetching data for page_number : {}...", page_number);
+        let skip = get_skip_number(records_per_page, page_number);
+        let records = self.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
+        println!("total records for page_number {} : {}", page_number, records.len());
+        for item in records.iter() {
+            &all_records.push(item.to_owned());
+        }
+        let elapsed = now.elapsed();
+        println!("__FUNC__ : get_all_azure_records_for_page() : total time taken for page_number {} : {:.2?}", page_number, elapsed);
+        println!("__FUNC__ : get_all_azure_records_for_page() : all_records.len() : {}", &all_records.len());
+        all_records
+    }
+
+    fn get_all_azure_records_for_pages(&self, page_numbers: Vec<i32>, azure_record: AzureRecord, records_per_page: i32) -> Vec<Value> {
+        let total_pages = self.get_total_pages_for_all_records(azure_record, records_per_page);
+        let mut all_records: Vec<Value> = Vec::new();
+        let now = time::Instant::now();
+
+        for page_number in page_numbers {
+            println!("__FUNC__ : get_all_azure_records_for_pages() : fetching data for page_number : {}...", page_number);
+            let skip = get_skip_number(records_per_page, page_number);
+            let records = self.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
+
+            println!("__FUNC__ : get_all_azure_records_for_pages() : total records for page_number {} : {}", page_number, records.len());
+            for item in records.iter() {
+                &all_records.push(item.to_owned());
+            }
+            let elapsed = now.elapsed();
+            println!("__FUNC__ : get_all_azure_records_for_pages() : total time taken so far : {:.2?}", elapsed);
+        }
+        println!("__FUNC__ : get_all_azure_records_for_pages() : length of all_records : {}", &all_records.len());
+        all_records
+    }
+
+    fn get_all_azure_records(&self, azure_record: AzureRecord, records_per_page: i32, write_json_to_file: bool) -> Vec<Value> {
+
+        let total_pages = self.get_total_pages_for_all_records(azure_record, records_per_page);
+
+        let mut all_records: Vec<Value> = Vec::new();
+
+        let now = time::Instant::now();
+
+        for page_number in 1..=total_pages {
+            let records = self.get_all_azure_records_for_page(page_number, azure_record, records_per_page);
+            println!("total records for page_number {} : {}", page_number, records.len());
+            for item in records.iter() {
+                &all_records.push(item.to_owned());
+            }
+            let elapsed = now.elapsed();
+            println!("__FUNC__ : get_all_azure_records() : total time taken so far : {:.2?}", elapsed);
+        }
+
+        println!("__FUNC__ : get_all_azure_records() : length of all_records : {}", &all_records.len());
+
+        if write_json_to_file {
+            let azure_entity = get_azure_record(azure_record);
+            let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
+
+            std::fs::write(
+            output_file,
+        serde_json::to_string_pretty(&all_records).unwrap(),
+            ).unwrap();
+        }
+        all_records
+    }
+}
+
+enum EnvironmentVarible {
+    ClientID,
+    ClientSecret,
+    TenantID,
+    Region,
+}
+
+fn get_env_var(env_var: EnvironmentVarible) -> String {
+    return match env_var {
+        EnvironmentVarible::ClientID => {
+            match env::var("CLIENT_ID") {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("environment variable 'CLIENT_ID' is not set !");
+                    "".to_owned()
+                },
+            }
+        },
+        EnvironmentVarible::ClientSecret => {
+            match env::var("CLIENT_SECRET") {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("environment variable 'CLIENT_SECRET' is not set !");
+                    "".to_owned()
+                },
+            }
+        },
+        EnvironmentVarible::TenantID => {
+            match env::var("TENANT_ID") {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("environment variable 'TENANT_ID' is not set !");
+                    "".to_owned()
+                },
+            }
+        },
+        EnvironmentVarible::Region => {
+            match env::var("REGION") {
+                Ok(v) => v,
+                Err(e) => {
+                    println!("environment variable 'TENANT_ID' is not set !");
+                    "".to_owned()
+                },
+            }
+        }
+    };
+}
+
+#[derive(Serialize, Debug, Clone)]
+struct Metadata {
+    id: String,
+    metadata: String,
+    datetime: String,
+    entity: String
+}
+
+#[tokio::main]
+async fn main() {
+    println!("Azure Data >");
+
+    let client_id = get_env_var(EnvironmentVarible::ClientID);
+    let client_secret = get_env_var(EnvironmentVarible::ClientSecret);
+    let tenant_id = get_env_var(EnvironmentVarible::TenantID);
+    let region = get_env_var(EnvironmentVarible::Region);
+
+    let mut service_principal = ServicePrincipal {
+        client_id,
+        client_secret,
+        region,
+        tenant_id,
+        token_type: TokenType::AzureApiToken,
+    };
+
+    // api token
+    let api_token = service_principal.get_token(TokenType::AzureApiToken, None).unwrap();
+    // graph token
+    let graph_token = service_principal.get_token(TokenType::AzureGraphToken, None).unwrap();
+
+    let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::VirtualMachine, 1000, true);
+
+
+    let now = Utc::now();
+    let ts: i64 = now.timestamp();
+    let nt = NaiveDateTime::from_timestamp_opt(ts, 0).unwrap();
+    let dt: DateTime<Utc> = DateTime::from_utc(nt, Utc);
+    let current_time_stamp = dt.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    let azure_entity = get_azure_record(AzureRecord::VirtualMachine);
+
+    let gcp_client = get_google_client().await.unwrap();
+
+    let bq_data_set = gcp_client.dataset().get("<PROJECT_NAME>", "<DATASET_NAME>").await.unwrap();
+
+    let mut vec_bq_insert: Vec<Metadata> = Vec::new();
+
+    for record in all_recs.iter() {
+        let rec_id = record["id"].to_string();
+        let rec_metadata = serde_json::to_string(record).unwrap();
+        let metadata = Metadata {
+            id: rec_id,
+            metadata: rec_metadata,
+            datetime: current_time_stamp.to_string(),
+            entity: azure_entity.to_string(),
+        };
+
+        vec_bq_insert.push(metadata);
+
+    }
+
+    let v_chunks: Vec<Vec<Metadata>> = vec_bq_insert.chunks(500).map(|x| x.to_vec()).collect();
+
+    for chunks in v_chunks {
+
+        let mut insert_request = TableDataInsertAllRequest::new();
+
+        for chunk in chunks.iter() {
+            insert_request.add_row(
+                None,
+                chunk
+            ).expect("could not add row");
+        }
+        let res = gcp_client.tabledata().insert_all("<PROJECT_NAME>", "<DATASET_NAME>", "<TABLE_NAME>", insert_request).await;
+
+        println!("res : {:#?}", res);
+    }
+}
+
+async fn get_google_client() -> Result<Client, Box<dyn std::error::Error>>{
+    let gcp_sa_key = match env::var("GOOGLE_APPLICATION_CREDENTIALS") {
+        Ok(v) => v,
+        Err(e) => {
+            println!("environment variable 'GOOGLE_APPLICATION_CREDENTIALS' is not set !");
+            "".to_owned()
+        },
+    };
+
+    if gcp_sa_key == "" {
+        let msg = format!("error : could not get file path for environment variable 'GOOGLE_APPLICATION_CREDENTIALS'");
+        return Err(Box::try_from(msg).unwrap())
+    }
+
+    let gcp_client = gcp_bigquery_client::Client::from_service_account_key_file(gcp_sa_key.as_str()).await.unwrap();
+    Ok(gcp_client)
+}
+
+fn get_skip_number(records_per_page: i32, page_number: i32) -> i32 {
+    (page_number-1) * records_per_page
+}
+
+
+fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure_record: AzureRecord, records_per_page: i32, write_json_to_file: bool) -> Vec<Value> {
+
+    println!("__FUNC__ : get_all_azure_records_in_parallel() ...");
+
+    let now = time::Instant::now();
+
+    let total_pages = service_principal.get_total_pages_for_all_records(azure_record, records_per_page);
+
+    let mut page_numbers: Vec<i32> = Vec::new();
+
+    for i in 1..=total_pages {
+        page_numbers.push(i);
+    }
+
+    let (sender, receiver) = mpsc::channel();
+
+    // let result_pages: Vec<_> = page_numbers.chunks(8).collect();
+
+    let v_chunked: Vec<Vec<i32>> = page_numbers.chunks(8).map(|x| x.to_vec()).collect();
+
+    println!("v_chunked : {:?}", v_chunked);
+
+    let mut all_records: Vec<Value> = Vec::new();
+
+    // let mut threads = vec![];
+
+    let total_count_of_chunks_of_vectors = v_chunked.len();
+
+    for page_numbers in v_chunked {
+
+        let sender = sender.clone();
+
+        // let spn = service_principal.clone();
+
+        let spn = service_principal.to_owned();
+
+        thread::spawn(move || {
+
+            let records = spn.get_all_azure_records_for_pages(page_numbers, azure_record, records_per_page);
+
+            println!("__VEC_LENGTH__ : {}", records.len());
+
+            let send_data = match sender.send(records) {
+                Ok(d) => {
+                    println!("__FUNC__ : get_all_azure_records_in_parallel() : data was sent from sender to receiver.")
+                },
+                Err(e) => {
+                    println!("__FUNC__ : error : get_all_azure_records_in_parallel() : data send failed : {:#?}", e);
+                }
+            };
+
+        });
+    }
+
+    drop(sender);
+
+    for _ in 0..total_count_of_chunks_of_vectors {
+        let records = receiver.recv().unwrap();
+
+        println!("__FUNC__ : _received {}  records from (receiver) ", records.len());
+        for rec in records.iter() {
+            &all_records.push(rec.to_owned());
+        }
+        println!("__FUNC__ : _total Length of all_records {}", all_records.len());
+    }
+
+    println!("__FUNC__ : _final : length of all_records : {}", &all_records.len());
+
+
+    if write_json_to_file {
+        let azure_entity = get_azure_record(azure_record);
+        let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
+
+        std::fs::write(
+        output_file,
+    serde_json::to_string_pretty(&all_records).unwrap(),
+        ).unwrap();
+    }
+
+    let elapsed = now.elapsed();
+
+    println!("__FUNC__ : get_all_azure_records_in_parallel() : final_time : {:.2?}", elapsed);
+
+    all_records
+}
+```
