@@ -6127,6 +6127,38 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
 
 Fetching Virtual Machines : Azure Resource Graph Query (ADX) , Using Cache & Multiple Threads : With BQ Inserts : Part-5
 
+`Cargo.toml`
+
+```toml
+[package]
+name = "azure-rust"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rand = "0.8.5"
+regex = "1.7.0"
+reqwest = { version = "0.11.13" , features = ["blocking"] } # reqwest with JSON parsing support
+#reqwest = { version = "0.11.13" } # reqwest with JSON parsing support
+tokio = { version = "1.23.0", features = ["full"] }
+serde = "1.0.152"
+serde_json = "1.0.91"
+serde_derive = "1.0.152"
+rayon = "1.6.1"
+futures = "0.3.4" # for our async / await blocks
+moka = "0.9.6"
+lazy_static = "1.4.0"
+quick_cache = "0.2.0"
+cached = "0.42.0"
+crossbeam-utils = "0.8.14"
+reqwest-retry = "0.2.1"
+reqwest-middleware = "0.2.0"
+gcp-bigquery-client = "0.16.5"
+chrono = "0.4.23"
+```
+
 Export Environment Variables
 
 ```bash
