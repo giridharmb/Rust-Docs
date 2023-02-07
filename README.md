@@ -946,6 +946,19 @@ enum Result<T, E>
 }
 ```
 
+#### Replacing Characters In A String
+
+```rust
+let s:String = "Hello, world!".chars()
+    .map(|x| match x { 
+        '!' => '?', 
+        'A'..='Z' => 'X', 
+        'a'..='z' => 'x',
+        _ => x
+    }).collect();
+println!("{}", s);// Xxxxx, xxxxx?
+```
+
 Rust's named lifetimes
 
 ```
