@@ -8,6 +8,8 @@ Please have a look the following file for code snippets/samples
 
 #### [src/main.rs](https://github.com/giridharmb/rust-app1/blob/master/src/main.rs)
 
+#### [Cloud : OpenStack | Azure | GCP](https://github.com/giridharmb/rust-app1/blob/master/CLOUD.md)
+
 
 How To Create A New Cargo Project (Executable App) ?
 
