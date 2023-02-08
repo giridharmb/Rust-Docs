@@ -3480,7 +3480,7 @@ fn main() {
 }
 ```
 
-#### The question mark operator
+#### The question `?` mark operator
 
 The question mark operator (`?`) unwraps valid values or returns errornous values, <br/>
 propagating them to the calling function. It is a unary postfix operator that can <br/>
@@ -3510,4 +3510,129 @@ Output
 
 ```bash
 Err(ParseIntError { kind: InvalidDigit })
+```
+
+#### Another Way To Leverage `?` Question Mark Operator
+
+```rust
+use std::error::Error;
+
+fn main() {
+
+    let result_division = match divide(3.0, 4.0) {
+        Ok(d) => {
+            println!("result of division : {:?}", d);
+            d
+        }
+        Err(e) => {
+            println!("error : {:?}", e);
+            0.0
+        }
+    };
+
+    let result_division = match divide(3.0, 0.0) {
+        Ok(d) => {
+            println!("result of division : {:?}", d);
+            d
+        }
+        Err(e) => {
+            println!("error : {:?}", e);
+            0.0
+        }
+    };
+
+    //--------------------------------------------------------------------------------
+
+    let result_square = match square(3) {
+        None => {
+            println!("result of square : got no data !");
+        }
+        Some(d) => {
+            println!("result of square : {:?}", d);
+        }
+    };
+
+    let result_square = match square(0) {
+        None => {
+            println!("result of square : got no data !");
+        }
+        Some(d) => {
+            println!("result of square : {:?}", d);
+        }
+    };
+
+    //--------------------------------------------------------------------------------
+}
+
+fn divide(a: f32, b: f32) -> Result<f32, Box<dyn std::error::Error>> {
+    if b <= 0.0 {
+        return Err(Box::try_from(String::from("cannot divide by 0")).unwrap());
+    }
+    Ok(a/b)
+}
+
+fn square(a: i32) -> Option<i32> {
+    if a == 0 {
+        return None
+    }
+    Some(a * a)
+}
+```
+
+Output
+
+```bash
+result of division : 0.75
+error : "cannot divide by 0"
+result of square : 9
+result of square : got no data !
+```
+
+#### Using `?` operator (for `Result` and `Option` Types)
+
+```rust
+fn main() {
+    println!("result of division-1 : {:?}", perform_math_operation_divide(3.0, 4.0));
+    println!("result of division-1 : {:?}", perform_math_operation_divide(3.0, 0.0));
+
+    println!("result of square-1 : {:?}", perform_math_operation_square(2));
+    println!("result of square-2 : {:?}", perform_math_operation_square(0));
+}
+
+fn perform_math_operation_divide(a: f32, b: f32) -> Result<f32, Box<dyn std::error::Error>> {
+    let result_division = divide(a, b)?;
+    println!("result_division : {:?}", result_division);
+    Ok(result_division)
+}
+
+fn perform_math_operation_square(a: i32) -> Option<i32> {
+    let result_square = square(a)?;
+    println!("result_square : {:?}", result_square);
+    Some(result_square)
+}
+
+fn divide(a: f32, b: f32) -> Result<f32, Box<dyn std::error::Error>> {
+    if b <= 0.0 {
+        return Err(Box::try_from(String::from("cannot divide by 0")).unwrap());
+    }
+    Ok(a/b)
+}
+
+fn square(a: i32) -> Option<i32> {
+    if a == 0 {
+        return None
+    }
+    Some(a * a)
+}
+```
+
+Output
+
+```bash
+result_division : 0.75
+result of division-1 : Ok(0.75)
+result of division-1 : Err("cannot divide by 0")
+result_square : 4
+result of square-1 : Some(4)
+result of square-2 : None
 ```
