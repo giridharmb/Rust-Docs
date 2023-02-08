@@ -3479,3 +3479,35 @@ fn main() {
     println!("Elapsed: {:.2?}", elapsed);
 }
 ```
+
+#### The question mark operator
+
+The question mark operator (`?`) unwraps valid values or returns errornous values, <br/>
+propagating them to the calling function. It is a unary postfix operator that can <br/>
+only be applied to the types `Result<T, E>` and `Option<T>`.<br/>
+
+When applied to values of the `Result<T, E>` type, it propagates errors. <br/>
+If the value is `Err(e)`, then it will return `Err(From::from(e))` from the <br/>
+enclosing function or closure. <br/>
+If applied to `Ok(x)`, then it will unwrap the value to evaulate to `x`.<br/>
+
+```rust
+use std::num::ParseIntError;
+
+fn try_to_parse() -> Result<i32, ParseIntError> {
+    let x: i32 = "123".parse()?; // x = 123
+    let y: i32 = "24a".parse()?; // returns an Err() immediately
+    Ok(x + y)                    // Doesn't run.
+}
+
+fn main() {
+    let res = try_to_parse();
+    println!("{:?}", res);
+}
+```
+
+Output
+
+```bash
+Err(ParseIntError { kind: InvalidDigit })
+```
