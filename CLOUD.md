@@ -2789,8 +2789,6 @@ lazy_static! {
         .time_to_idle(Duration::from_secs(45 * 60))
         // Create the cache.
         .build();
-
-    // static ref reqwest_retry_policy = ExponentialBackoff::builder().build_with_max_retries(10);
 }
 
 impl PartialEq<Self> for AzRecord {
@@ -2867,10 +2865,6 @@ impl ServicePrincipal {
         let resource_graph_url = azure_region_details.get("resourceGraphURL").unwrap().to_string();
 
         let resource_api_url = azure_region_details.get("resourceAPI").unwrap().to_string();
-
-        // println!("authority_url      : {:?}", authority_url);
-        // println!("resource_graph_url : {:?}", resource_graph_url);
-        // println!("resource_api_url   : {:?}", resource_api_url);
 
         let my_scope = match azure_scope {
             None => {
@@ -3235,13 +3229,7 @@ impl ServicePrincipal {
         println!("__FUNC__ : get_all_azure_records() : length of all_records : {}", &all_records.len());
 
         if write_json_to_file {
-            let azure_entity = get_azure_record(azure_record);
-            let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
-
-            std::fs::write(
-            output_file,
-        serde_json::to_string_pretty(&all_records).unwrap(),
-            ).unwrap();
+            write_vec_of_values_to_file("".to_string(), &all_records, Some(azure_record));
         }
         all_records
     }
@@ -3303,8 +3291,7 @@ struct Metadata {
     entity: String
 }
 
-#[tokio::main]
-async fn main() {
+fn main() {
     println!("Azure Data >");
 
     let client_id = get_env_var(EnvironmentVarible::ClientID);
@@ -3322,43 +3309,60 @@ async fn main() {
 
     // api token
     let api_token = service_principal.get_token(TokenType::AzureApiToken, None).unwrap();
+
     // graph token
     let graph_token = service_principal.get_token(TokenType::AzureGraphToken, None).unwrap();
 
+    let now_az_query = time::Instant::now();
+
     let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::VirtualMachine, 1000, true);
 
+    let elapsed_az_query = now_az_query.elapsed();
 
+    println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
+
+    perform_bigquery_inserts_for_azure_record(AzureRecord::VirtualMachine, &all_recs, "<MY_GCP_PROJECT_NAME>".to_string(), "<MY_BQ_DATASET_NAME>".to_string(), "<MY_BQ_TABLE>".to_string())
+}
+
+#[tokio::main]
+async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, all_recs: &Vec<Value>, project_id: String, dataset_id: String, table_id: String) {
     let now = Utc::now();
     let ts: i64 = now.timestamp();
     let nt = NaiveDateTime::from_timestamp_opt(ts, 0).unwrap();
     let dt: DateTime<Utc> = DateTime::from_utc(nt, Utc);
     let current_time_stamp = dt.format("%Y-%m-%d %H:%M:%S").to_string();
 
-    let azure_entity = get_azure_record(AzureRecord::VirtualMachine);
+    let azure_entity = get_azure_record(azure_record);
 
     let gcp_client = get_google_client().await.unwrap();
 
-    let bq_data_set = gcp_client.dataset().get("<PROJECT_NAME>", "<DATASET_NAME>").await.unwrap();
+    let bq_data_set = gcp_client.dataset().get(project_id.as_str(), dataset_id.as_str()).await.unwrap();
 
     let mut vec_bq_insert: Vec<Metadata> = Vec::new();
 
     for record in all_recs.iter() {
-        let rec_id = record["id"].to_string();
+        let rec_id = record[0].as_str().unwrap();
         let rec_metadata = serde_json::to_string(record).unwrap();
         let metadata = Metadata {
-            id: rec_id,
+            id: rec_id.to_owned(),
             metadata: rec_metadata,
             datetime: current_time_stamp.to_string(),
             entity: azure_entity.to_string(),
         };
-
         vec_bq_insert.push(metadata);
-
     }
 
     let v_chunks: Vec<Vec<Metadata>> = vec_bq_insert.chunks(500).map(|x| x.to_vec()).collect();
 
+    let total_chunks = v_chunks.len();
+
+    let now_bq_insert = time::Instant::now();
+
+    let mut chunk_counter = 1;
+
     for chunks in v_chunks {
+
+        println!("chunk_counter : {} / {}", chunk_counter, total_chunks);
 
         let mut insert_request = TableDataInsertAllRequest::new();
 
@@ -3368,10 +3372,16 @@ async fn main() {
                 chunk
             ).expect("could not add row");
         }
-        let res = gcp_client.tabledata().insert_all("<PROJECT_NAME>", "<DATASET_NAME>", "<TABLE_NAME>", insert_request).await;
+        let res = gcp_client.tabledata().insert_all(project_id.as_str(), dataset_id.as_str(), table_id.as_str(), insert_request).await;
 
         println!("res : {:#?}", res);
+
+        chunk_counter = chunk_counter + 1;
     }
+
+    let elapsed_bq_insert = now_bq_insert.elapsed();
+
+    println!("__FUNC__ : perform_bigquery_inserts_for_azure_record() : total time for big_query inserts : {:.2?}", elapsed_bq_insert);
 }
 
 async fn get_google_client() -> Result<Client, Box<dyn std::error::Error>>{
@@ -3413,23 +3423,17 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
 
     let (sender, receiver) = mpsc::channel();
 
-    // let result_pages: Vec<_> = page_numbers.chunks(8).collect();
-
     let v_chunked: Vec<Vec<i32>> = page_numbers.chunks(8).map(|x| x.to_vec()).collect();
 
     println!("v_chunked : {:?}", v_chunked);
 
     let mut all_records: Vec<Value> = Vec::new();
 
-    // let mut threads = vec![];
-
     let total_count_of_chunks_of_vectors = v_chunked.len();
 
     for page_numbers in v_chunked {
 
         let sender = sender.clone();
-
-        // let spn = service_principal.clone();
 
         let spn = service_principal.to_owned();
 
@@ -3465,21 +3469,32 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
 
     println!("__FUNC__ : _final : length of all_records : {}", &all_records.len());
 
-
-    if write_json_to_file {
-        let azure_entity = get_azure_record(azure_record);
-        let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
-
-        std::fs::write(
-        output_file,
-    serde_json::to_string_pretty(&all_records).unwrap(),
-        ).unwrap();
-    }
+    write_vec_of_values_to_file("".to_string(), &all_records, Some(azure_record));
 
     let elapsed = now.elapsed();
 
     println!("__FUNC__ : get_all_azure_records_in_parallel() : final_time : {:.2?}", elapsed);
 
     all_records
+}
+
+fn write_vec_of_values_to_file(mut output_file: String, all_records: &Vec<Value>, azure_record: Option<AzureRecord>) {
+    let out_file_for_azure_record = match azure_record {
+        None => {
+            "".to_owned()
+        },
+        Some(d) => {
+            let azure_entity = get_azure_record(d);
+            let output_file = azure_entity.replace("/", "_").replace(".", "_") + ".json";
+            output_file
+        },
+    };
+    if out_file_for_azure_record != "" {
+        output_file = out_file_for_azure_record;
+    }
+
+    println!("json file ( {} ) written !", output_file);
+
+    std::fs::write(output_file, serde_json::to_string_pretty(&all_records).unwrap()).unwrap();
 }
 ```
