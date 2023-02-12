@@ -3641,27 +3641,30 @@ result of square-2 : None
 
 `Async` vs `threads` in Rust
 
-The primary alternative to async in Rust is using OS threads, either directly through 
-std::thread or indirectly through a thread pool. Migrating from threads to async or 
-vice versa typically requires major refactoring work, both in terms of implementation 
-and (if you are building a library) any exposed public interfaces. As such, picking 
-the model that suits your needs early can save a lot of development time.
+The primary alternative to async in Rust is  using OS threads, either directly
+through  std::thread  or  indirectly  through  a thread  pool. Migrating  from
+threads to async  or  vice versa typically  requires  major refactoring  work,
+both in  terms  of  implementation  and (if  you are  building  a library) any
+exposed public interfaces. As such,  picking  the model  that suits your needs
+early can save a lot of development time.
 
-OS threads are suitable for a small number of tasks, since threads come with 
-CPU and memory overhead. Spawning and switching between threads is quite expensive 
-as even idle threads consume system resources. A thread pool library can help mitigate 
-some of these costs, but not all. However, threads let you reuse existing synchronous 
-code without significant code changes—no particular programming model is required. 
-In some operating systems, you can also change the priority of a thread, which is 
-useful for drivers and other latency sensitive applications.
+OS threads are  suitable for a small number of tasks, since  threads come with
+CPU  and  memory overhead.  Spawning and switching between  threads  is  quite
+expensive  as  even  idle threads  consume  system  resources.  A thread  pool
+library can help mitigate  some of these costs, but not all. However,  threads
+let  you reuse existing synchronous  code without significant code  changes—no
+particular programming model is required.  In  some operating systems, you can
+also change the priority of a thread,  which is  useful for drivers and  other
+latency sensitive applications.
 
-Async provides significantly reduced CPU and memory overhead, especially for 
-workloads with a large amount of IO-bound tasks, such as servers and databases. 
-All else equal, you can have orders of magnitude more tasks than OS threads, 
-because an async runtime uses a small amount of (expensive) threads to handle a 
-large amount of (cheap) tasks. However, async Rust results in larger binary blobs 
-due to the state machines generated from async functions and since each executable 
-bundles an async runtime.
+Async  provides significantly  reduced CPU and memory overhead, especially for
+workloads  with a  large  amount  of  IO-bound  tasks,  such  as  servers  and
+databases.  All else equal, you can have  orders  of magnitude more tasks than
+OS threads,  because  an async  runtime  uses  a  small  amount of (expensive)
+threads  to handle  a  large  amount  of  (cheap)  tasks. However, async  Rust
+results in larger binary blobs  due to the state machines generated from async
+functions and since each executable  bundles an async runtime.
 
-On a last note, asynchronous programming is not better than threads, but different. 
-If you don't need async for performance reasons, threads can often be the simpler alternative.
+On  a  last note, asynchronous programming is not  better  than  threads,  but
+different.  If you don't need async for performance reasons, threads can often
+be the simpler alternative.
