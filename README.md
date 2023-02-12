@@ -3641,6 +3641,7 @@ result of square-2 : None
 
 `Async` vs `threads` in Rust
 
+```
 The primary alternative to async in Rust is  using OS threads, either directly
 through  std::thread  or  indirectly  through  a thread  pool. Migrating  from
 threads to async  or  vice versa typically  requires  major refactoring  work,
@@ -3668,3 +3669,4 @@ functions and since each executable  bundles an async runtime.
 On  a  last note, asynchronous programming is not  better  than  threads,  but
 different.  If you don't need async for performance reasons, threads can often
 be the simpler alternative.
+```
