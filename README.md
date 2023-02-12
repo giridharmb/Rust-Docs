@@ -3670,3 +3670,48 @@ On  a  last note, asynchronous programming is not  better  than  threads,  but
 different.  If you don't need async for performance reasons, threads can often
 be the simpler alternative.
 ```
+
+#### Boxing : Creating Objects In Heap Using `Box<T>`
+
+```rust
+use std::mem;
+
+#[allow(dead_code)]
+struct Rectangle {
+    width: f64,
+    height: f64,
+}
+
+#[allow(dead_code)]
+fn object() -> Rectangle {
+    Rectangle { width: 1.0, height: 1.0}
+}
+
+#[allow(dead_code)]
+fn new_object() -> Box<Rectangle> {
+    // Allocate this on the heap, and return a pointer to it
+    Box::new(Rectangle { width: 1.0, height: 1.0})
+
+}
+
+fn main() {
+    // Stack allocated variables
+    let my_rect: Rectangle = object();
+
+    // Heap allocated rectangle
+    let boxed_rectangle: Box<Rectangle> = new_object();
+
+    println!("Rectangle occupies {} bytes on the stack",
+             mem::size_of_val(&my_rect));
+
+    println!("Rectangle occupies {} bytes on the heap",
+             mem::size_of_val(&boxed_rectangle));
+}
+```
+
+Output
+
+```bash
+Rectangle occupies 16 bytes on the stack
+Rectangle occupies 8 bytes on the heap
+```
