@@ -2675,7 +2675,7 @@ serde_json = "1.0.91"
 serde_derive = "1.0.152"
 rayon = "1.6.1"
 futures = "0.3.4" # for our async / await blocks
-moka = "0.9.6"
+moka = "0.10.0"
 lazy_static = "1.4.0"
 quick_cache = "0.2.0"
 cached = "0.42.0"
@@ -2684,25 +2684,59 @@ reqwest-retry = "0.2.1"
 reqwest-middleware = "0.2.0"
 gcp-bigquery-client = "0.16.5"
 chrono = "0.4.23"
+clap = { version = "4.1.4", features = ["derive"] }
 ```
 
 Export Environment Variables
 
 ```bash
 export GOOGLE_APPLICATION_CREDENTIALS="$HOME/svc-account.json"
-export PROJECT_ID="<PRIJECT_ID>"
-export DATASET_ID="<GCP_DATASET>"
-export TABLE_ID="<TABLE_NAME>"
 ```
 
-For this code to work, on GCP BigQuery table we have
+Program Help
 
 ```bash
-- id       -> column type : STRING
-- metadata -> column type : JSON
-- datetime -> column type : DATETIME
-- entity   -> column type : STRING
+target/release/azure-rust -h
+Cloud Data Tooling >
+Usage: azure-rust --gcp-project-name <GCP_PROJECT_NAME> --bq-data-set <BQ_DATA_SET> --bq-table-name <BQ_TABLE_NAME> --azure-client-id <AZURE_CLIENT_ID> --azure-client-secret <AZURE_CLIENT_SECRET> --azure-tenant-id <AZURE_TENANT_ID> --azure-region-name <AZURE_REGION_NAME> --azure-entity <AZURE_ENTITY>
+
+Options:
+      --gcp-project-name <GCP_PROJECT_NAME>
+          GCP Project Name
+      --bq-data-set <BQ_DATA_SET>
+          BigQuery DataSet
+      --bq-table-name <BQ_TABLE_NAME>
+          BigQuery Table
+      --azure-client-id <AZURE_CLIENT_ID>
+          Azure Client ID
+      --azure-client-secret <AZURE_CLIENT_SECRET>
+          Azure Client Secret
+      --azure-tenant-id <AZURE_TENANT_ID>
+          Azure Tenant ID
+      --azure-region-name <AZURE_REGION_NAME>
+          Azure Region Name (america | china)
+      --azure-entity <AZURE_ENTITY>
+          Azure Entity To Scrape ('microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines')
+  -h, --help
+          Print help
+  -V, --version
+          Print version
 ```
+
+Running The Program
+
+```bash
+target/release/azure-rust \
+--gcp-project-name "<GCP_PROJECT>" \
+--bq-data-set "<BQ_DATASET>" \
+--bq-table-name "<BQ_TABLE_NAME>" \
+--azure-client-id "00000000-0000-0000-0000-000000000000" \
+--azure-client-secret "<INSERT_SECRET_HERE>" \
+--azure-tenant-id "00000000-0000-0000-0000-000000000000" \
+--azure-region-name "america" \
+--azure-entity "microsoft.compute/virtualmachines"
+```
+
 
 `src/main.rs`
 
@@ -2729,7 +2763,7 @@ use gcp_bigquery_client::model::table_data_insert_all_request::TableDataInsertAl
 use gcp_bigquery_client::model::table_data_insert_all_response::TableDataInsertAllResponse;
 use gcp_bigquery_client::model::table_field_schema::TableFieldSchema;
 use gcp_bigquery_client::model::table_schema::TableSchema;
-// use crossbeam_utils::thread;
+
 use crate::AzureRecord::VirtualMachine;
 
 use reqwest_middleware::{ClientWithMiddleware};
@@ -2738,6 +2772,49 @@ use reqwest_retry::{RetryTransientMiddleware, policies::ExponentialBackoff};
 use serde_derive::Deserialize;
 
 use chrono::prelude::*;
+use gcp_bigquery_client::model::dataset::Dataset;
+
+use clap::Parser;
+
+use std::mem;
+
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    /// GCP Project Name
+    #[arg(long)]
+    gcp_project_name: String,
+
+    /// BigQuery DataSet
+    #[arg(long)]
+    bq_data_set: String,
+
+    /// BigQuery Table
+    #[arg(long)]
+    bq_table_name: String,
+
+    /// Azure Client ID
+    #[arg(long)]
+    azure_client_id: String,
+
+    /// Azure Client Secret
+    #[arg(long)]
+    azure_client_secret: String,
+
+    /// Azure Tenant ID
+    #[arg(long)]
+    azure_tenant_id: String,
+
+    /// Azure Region Name
+    /// (america | china)
+    #[arg(long)]
+    azure_region_name: String,
+
+    /// Azure Entity To Scrape
+    /// ('microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines')
+    #[arg(long)]
+    azure_entity: String,
+}
 
 #[derive(Debug)]
 pub enum GenericError {
@@ -2759,15 +2836,16 @@ enum TokenType {
 
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 enum AzureRecord {
-    VirtualMachine
+    VirtualMachine,
+    ScaleSets,
 }
 
 #[derive(Clone)]
 struct ServicePrincipal {
-    client_id: String,
-    client_secret: String,
-    tenant_id: String,
-    region: String,
+    azure_client_id: String,
+    azure_client_secret: String,
+    azure_tenant_id: String,
+    azure_region_name: String,
     token_type: TokenType
 }
 
@@ -2838,16 +2916,25 @@ fn get_azure_region_details(region: &str) -> HashMap<String, String> {
 fn get_azure_record(azure_record: AzureRecord) -> String {
     return match azure_record {
         AzureRecord::VirtualMachine => "microsoft.compute/virtualmachines".to_owned(),
+        AzureRecord::ScaleSets => "microsoft.compute/virtualmachinescalesets/virtualmachines".to_owned(),
+    }
+}
+
+fn get_azure_record_from_str(azure_record_str: &str) -> AzureRecord {
+    return match azure_record_str {
+        "microsoft.compute/virtualmachines" => AzureRecord::VirtualMachine,
+        "microsoft.compute/virtualmachinescalesets/virtualmachines" => AzureRecord::ScaleSets,
+        _ => AzureRecord::VirtualMachine,
     }
 }
 
 impl ServicePrincipal {
 
     fn get_params_and_url(&self, token_type: TokenType, azure_scope: Option<String>) -> ([(String, String); 4], String, String, String) {
-        let region = &self.region;
-        let client_id = &self.client_id;
-        let tenant_id = &self.tenant_id;
-        let client_secret = &self.client_secret;
+        let region = &self.azure_region_name;
+        let client_id = &self.azure_client_id;
+        let tenant_id = &self.azure_tenant_id;
+        let client_secret = &self.azure_client_secret;
 
         let azure_region_details = get_azure_region_details(region.as_str());
 
@@ -2920,11 +3007,10 @@ impl ServicePrincipal {
             return Ok(my_token)
         }
 
-        let region = &self.region;
-        let client_id = &self.client_id;
-        let client_secret = &self.client_secret;
-        let region = &self.region;
-        let tenant_id = &self.tenant_id;
+        let region = &self.azure_region_name;
+        let client_id = &self.azure_client_id;
+        let client_secret = &self.azure_client_secret;
+        let tenant_id = &self.azure_tenant_id;
 
         let my_scope = Some("https://management.azure.com/.default".to_string());
 
@@ -3029,7 +3115,16 @@ impl ServicePrincipal {
 
         let record_name = get_azure_record(azure_record);
 
-        let total_records_query = format!("Resources | where type == '{}' | summarize count()", record_name);
+        let total_records_query = match azure_record {
+            AzureRecord::VirtualMachine => {
+                let q = format!("Resources | where type == '{}' | summarize count()", record_name);
+                q
+            },
+            AzureRecord::ScaleSets => {
+                let q = format!("ComputeResources | where type == '{}' |  summarize count()", record_name);
+                q
+            },
+        };
 
         let json_payload = json!({
             "subscriptions": empty,
@@ -3104,7 +3199,17 @@ impl ServicePrincipal {
 
         let azure_entity = get_azure_record(azure_record);
 
-        let query = format!("Resources | where type =~ '{}'", azure_entity);
+        let query = match azure_record {
+            AzureRecord::VirtualMachine => {
+                let q = format!("Resources | where type =~ '{}'", azure_entity);
+                q
+            },
+            AzureRecord::ScaleSets => {
+                let q = format!("ComputeResources | where type=~ '{}'", azure_entity);
+                q
+            },
+        };
+
 
         let json_payload = json!({
             "subscriptions": empty,
@@ -3125,6 +3230,11 @@ impl ServicePrincipal {
                 let token = d.to_owned();
                 let now = time::Instant::now();
 
+                if azure_record == AzureRecord::ScaleSets {
+                    let my_sleep_duration = time::Duration::from_millis(3000);
+                    thread::sleep(my_sleep_duration);
+                }
+
                 let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
                     Ok(d) => {
                         let elapsed = now.elapsed();
@@ -3132,6 +3242,9 @@ impl ServicePrincipal {
                         println!("azure_data_explorer query result:");
                         let json_str = d.text().unwrap();
                         let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+
+                        // println!("{:#?}", json_data);
+
                         let rows = &json_data["data"]["rows"];
 
                         println!("TTT (top : {} , skip : {}) : {:.2?}", top, skip, elapsed);
@@ -3164,8 +3277,8 @@ impl ServicePrincipal {
     }
 
     fn get_total_pages_for_all_records(&self, azure_record: AzureRecord, records_per_page: i32) -> i32 {
-        let total_records_for_virtual_machines = self.get_total_records(azure_record);
-        let total_pages = (total_records_for_virtual_machines as f32 / records_per_page as f32).ceil() as i32;
+        let total_records = self.get_total_records(azure_record);
+        let total_pages = (total_records as f32 / records_per_page as f32).ceil() as i32;
         println!("__FUNC__ : get_total_pages_for_all_records() : {}", total_pages);
         total_pages
     }
@@ -3176,7 +3289,7 @@ impl ServicePrincipal {
         let now = time::Instant::now();
         println!("__FUNC__: get_all_azure_records_for_page() : fetching data for page_number : {}...", page_number);
         let skip = get_skip_number(records_per_page, page_number);
-        let records = self.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
+        let records = self.get_azure_records(azure_record, records_per_page, skip);
         println!("total records for page_number {} : {}", page_number, records.len());
         for item in records.iter() {
             &all_records.push(item.to_owned());
@@ -3195,7 +3308,7 @@ impl ServicePrincipal {
         for page_number in page_numbers {
             println!("__FUNC__ : get_all_azure_records_for_pages() : fetching data for page_number : {}...", page_number);
             let skip = get_skip_number(records_per_page, page_number);
-            let records = self.get_azure_records(AzureRecord::VirtualMachine, records_per_page, skip);
+            let records = self.get_azure_records(azure_record, records_per_page, skip);
 
             println!("__FUNC__ : get_all_azure_records_for_pages() : total records for page_number {} : {}", page_number, records.len());
             for item in records.iter() {
@@ -3291,97 +3404,33 @@ struct Metadata {
     entity: String
 }
 
-fn main() {
-    println!("Azure Data >");
-
-    let client_id = get_env_var(EnvironmentVarible::ClientID);
-    let client_secret = get_env_var(EnvironmentVarible::ClientSecret);
-    let tenant_id = get_env_var(EnvironmentVarible::TenantID);
-    let region = get_env_var(EnvironmentVarible::Region);
-
-    let mut service_principal = ServicePrincipal {
-        client_id,
-        client_secret,
-        region,
-        tenant_id,
-        token_type: TokenType::AzureApiToken,
-    };
-
-    // api token
-    let api_token = service_principal.get_token(TokenType::AzureApiToken, None).unwrap();
-
-    // graph token
-    let graph_token = service_principal.get_token(TokenType::AzureGraphToken, None).unwrap();
-
-    let now_az_query = time::Instant::now();
-
-    let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::VirtualMachine, 1000, true);
-
-    let elapsed_az_query = now_az_query.elapsed();
-
-    println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
-
-    perform_bigquery_inserts_for_azure_record(AzureRecord::VirtualMachine, &all_recs, "<MY_GCP_PROJECT_NAME>".to_string(), "<MY_BQ_DATASET_NAME>".to_string(), "<MY_BQ_TABLE>".to_string())
+#[derive(Serialize, Debug, Clone)]
+struct AzureGenericRecord {
+    scrape_ts: String,
+    id: String,
+    name: String,
+    az_type: String,
+    tenant_id: String,
+    location: String,
+    resource_group: String,
+    subscription_id: String,
+    properties: String,
+    tags: String,
+    plan: String,
+    identity: String,
+    zones: String,
+    extended_location: String,
+    kind: String,
+    managed_by: String,
+    sku: String,
 }
 
+
 #[tokio::main]
-async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, all_recs: &Vec<Value>, project_id: String, dataset_id: String, table_id: String) {
-    let now = Utc::now();
-    let ts: i64 = now.timestamp();
-    let nt = NaiveDateTime::from_timestamp_opt(ts, 0).unwrap();
-    let dt: DateTime<Utc> = DateTime::from_utc(nt, Utc);
-    let current_time_stamp = dt.format("%Y-%m-%d %H:%M:%S").to_string();
-
-    let azure_entity = get_azure_record(azure_record);
-
+async fn get_bq_data_set(project_id: String, dataset_id: String) -> Dataset {
     let gcp_client = get_google_client().await.unwrap();
-
     let bq_data_set = gcp_client.dataset().get(project_id.as_str(), dataset_id.as_str()).await.unwrap();
-
-    let mut vec_bq_insert: Vec<Metadata> = Vec::new();
-
-    for record in all_recs.iter() {
-        let rec_id = record[0].as_str().unwrap();
-        let rec_metadata = serde_json::to_string(record).unwrap();
-        let metadata = Metadata {
-            id: rec_id.to_owned(),
-            metadata: rec_metadata,
-            datetime: current_time_stamp.to_string(),
-            entity: azure_entity.to_string(),
-        };
-        vec_bq_insert.push(metadata);
-    }
-
-    let v_chunks: Vec<Vec<Metadata>> = vec_bq_insert.chunks(500).map(|x| x.to_vec()).collect();
-
-    let total_chunks = v_chunks.len();
-
-    let now_bq_insert = time::Instant::now();
-
-    let mut chunk_counter = 1;
-
-    for chunks in v_chunks {
-
-        println!("chunk_counter : {} / {}", chunk_counter, total_chunks);
-
-        let mut insert_request = TableDataInsertAllRequest::new();
-
-        for chunk in chunks.iter() {
-            insert_request.add_row(
-                None,
-                chunk
-            ).expect("could not add row");
-        }
-        let res = gcp_client.tabledata().insert_all(project_id.as_str(), dataset_id.as_str(), table_id.as_str(), insert_request).await;
-
-        println!("res : {:#?}", res);
-
-        chunk_counter = chunk_counter + 1;
-    }
-
-    let elapsed_bq_insert = now_bq_insert.elapsed();
-
-    println!("__FUNC__ : perform_bigquery_inserts_for_azure_record() : total time for big_query inserts : {:.2?}", elapsed_bq_insert);
+    return bq_data_set
 }
 
 async fn get_google_client() -> Result<Client, Box<dyn std::error::Error>>{
@@ -3496,5 +3545,187 @@ fn write_vec_of_values_to_file(mut output_file: String, all_records: &Vec<Value>
     println!("json file ( {} ) written !", output_file);
 
     std::fs::write(output_file, serde_json::to_string_pretty(&all_records).unwrap()).unwrap();
+}
+
+#[tokio::main]
+async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, all_recs: &Vec<Value>, project_id: String, dataset_id: String, table_id: String) {
+    let now = Utc::now();
+    let ts: i64 = now.timestamp();
+    let nt = NaiveDateTime::from_timestamp_opt(ts, 0).unwrap();
+    let dt: DateTime<Utc> = DateTime::from_utc(nt, Utc);
+
+    let current_time_stamp = dt.format("%Y-%m-%d %H:%M:%S").to_string();
+
+    let time_stamp = dt.format("%Y-%m-%d %H:%M:%S%.6f %Z").to_string();
+
+    let azure_entity = get_azure_record(azure_record);
+
+    let gcp_client = get_google_client().await.unwrap();
+
+    let bq_data_set = gcp_client.dataset().get(project_id.as_str(), dataset_id.as_str()).await.unwrap();
+
+    // let mut vec_bq_insert: Vec<Metadata> = Vec::new();
+    let mut vec_bq_insert: Vec<AzureGenericRecord> = Vec::new();
+
+    for record in all_recs.iter() {
+        let rec_id = record[0].as_str().unwrap();
+        let rec_metadata = serde_json::to_string(record).unwrap();
+        let metadata = Metadata {
+            id: rec_id.to_owned(),
+            metadata: rec_metadata,
+            datetime: current_time_stamp.to_string(),
+            entity: azure_entity.to_string(),
+        };
+
+        /*
+            scrape_ts: String,
+            id: String,
+            name: String,
+            az_type: String,
+            tenant_id: String,
+            location: String,
+            resource_group: String,
+            subscription_id: String,
+            properties: String,
+            tags: String,
+            plan: String,
+            identity: String,
+            zones: String,
+            extended_location: String,
+            kind: String,
+            managed_by: String,
+            sku: String,
+        */
+
+        let default_value_for_missing_data = json!(null).to_string();
+
+        let rec_id = record[0].as_str().unwrap();
+        let rec_name = record[1].as_str().unwrap();
+        let az_type = record[2].as_str().unwrap();
+        let tenant_id = record[3].as_str().unwrap();
+        let location = record[5].as_str().unwrap();
+        let resource_group = record[6].as_str().unwrap();
+        let subscription_id = record[7].as_str().unwrap();
+
+        let props = record[11].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_tags = record[12].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_plan = record[10].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_identity = record[13].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_zone = record[14].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_extended_locaton = record[15].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_kind = record[4].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_managed_by = record[8].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_sku = record[9].as_str().unwrap_or(default_value_for_missing_data.as_str());
+
+        let metadata = AzureGenericRecord {
+            scrape_ts: time_stamp.to_string(),
+            id: rec_id.to_string(),
+            name: rec_name.to_string(),
+            az_type: az_type.to_string(),
+            tenant_id: tenant_id.to_string(),
+            location: location.to_string(),
+            resource_group: resource_group.to_string(),
+            subscription_id: subscription_id.to_string(),
+            properties:  props.to_string(),
+            tags: my_tags.to_string(),
+
+            plan: my_plan.to_string(),
+            identity: my_identity.to_string(),
+            zones: my_zone.to_string(),
+            extended_location: my_extended_locaton.to_string(),
+            kind: my_kind.to_string(),
+            managed_by: my_managed_by.to_string(),
+            sku: my_sku.to_string(),
+        };
+
+        vec_bq_insert.push(metadata);
+    }
+
+    // let v_chunks: Vec<Vec<Metadata>> = vec_bq_insert.chunks(500).map(|x| x.to_vec()).collect();
+    let v_chunks: Vec<Vec<AzureGenericRecord>> = vec_bq_insert.chunks(500).map(|x| x.to_vec()).collect();
+
+    let total_chunks = v_chunks.len();
+
+    let now_bq_insert = time::Instant::now();
+
+    let mut chunk_counter = 1;
+
+    for chunks in v_chunks {
+
+        println!("chunk_counter : {} / {}", chunk_counter, total_chunks);
+
+        let mut insert_request = TableDataInsertAllRequest::new();
+
+        for chunk in chunks.iter() {
+            insert_request.add_row(
+                None,
+                chunk
+            ).expect("could not add row");
+        }
+        let res = gcp_client.tabledata().insert_all(project_id.as_str(), dataset_id.as_str(), table_id.as_str(), insert_request).await;
+
+        println!("res : {:#?}", res);
+
+        chunk_counter = chunk_counter + 1;
+    }
+
+    let elapsed_bq_insert = now_bq_insert.elapsed();
+
+    println!("__FUNC__ : perform_bigquery_inserts_for_azure_record() : total time for big_query inserts : {:.2?}", elapsed_bq_insert);
+}
+
+
+fn main() {
+    println!("Cloud Data Tooling >");
+
+    let args = Args::parse();
+
+    let gcp_project_name = args.gcp_project_name;
+    let bq_data_set = args.bq_data_set;
+    let bq_table_name = args.bq_table_name;
+
+    let azure_tenant_id = args.azure_tenant_id;
+    let azure_client_id = args.azure_client_id;
+    let azure_client_secret = args.azure_client_secret;
+
+    let azure_region_name = args.azure_region_name;
+
+    let mut service_principal = ServicePrincipal {
+        azure_client_id,
+        azure_client_secret,
+        azure_region_name,
+        azure_tenant_id,
+        token_type: TokenType::AzureApiToken,
+    };
+
+    // api token
+    let api_token = service_principal.get_token(TokenType::AzureApiToken, None).unwrap();
+
+    // graph token
+    let graph_token = service_principal.get_token(TokenType::AzureGraphToken, None).unwrap();
+
+    let az_entity = args.azure_entity.as_str();
+
+    let az_record = get_azure_record_from_str(az_entity);
+
+    let entity = match az_record {
+        AzureRecord::VirtualMachine => {
+            /// virtual machines
+            let now_az_query = time::Instant::now();
+            let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::VirtualMachine, 1000, true);
+            let elapsed_az_query = now_az_query.elapsed();
+            println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
+            perform_bigquery_inserts_for_azure_record(AzureRecord::VirtualMachine, &all_recs, gcp_project_name.to_string(), bq_data_set.to_string(), bq_table_name.to_string());
+        },
+        AzureRecord::ScaleSets => {
+            /// vmss (scale sets)
+            let now_az_query = time::Instant::now();
+            let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::ScaleSets, 1000, true);
+            let elapsed_az_query = now_az_query.elapsed();
+            println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
+            perform_bigquery_inserts_for_azure_record(AzureRecord::ScaleSets, &all_recs, gcp_project_name.to_string(), bq_data_set.to_string(), bq_table_name.to_string())
+        },
+    };
+
 }
 ```
