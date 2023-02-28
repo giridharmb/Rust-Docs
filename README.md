@@ -3715,3 +3715,62 @@ Output
 Rectangle occupies 16 bytes on the stack
 Rectangle occupies 8 bytes on the heap
 ```
+
+Serialize & Deserialize Data
+
+```toml
+[package]
+name = "my-crate"
+version = "0.1.0"
+authors = ["Me <user@rust-lang.org>"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+# serde_json is just for the example, not required in general
+serde_json = "1.0"
+```
+
+```rust
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize, Debug)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+fn main() {
+    let point = Point { x: 1, y: 2 };
+
+    let serialized = serde_json::to_string(&point).unwrap();
+    println!("serialized = {}", serialized);
+
+    let deserialized: Point = serde_json::from_str(&serialized).unwrap();
+    println!("deserialized = {:?}", deserialized);
+}
+```
+
+Output
+
+```bash
+$ cargo run
+serialized = {"x":1,"y":2}
+deserialized = Point { x: 1, y: 2 }
+```
+
+Troubleshooting
+
+Sometimes you may see compile-time errors that tell you:
+
+> the trait `serde::ser::Serialize` is not implemented for `...`
+
+Even though the struct or enum clearly has `#[derive(Serialize)]` on it.
+
+This almost always means that you are using libraries that depend on incompatible versions of Serde. <br/>
+You may be depending on serde 1.0 in your Cargo.toml but using some other library that depends on serde 0.9. <br/>
+So the Serialize trait from serde 1.0 may be implemented, but the library expects an implementation of the <br/>
+Serialize trait from serde 0.9. From the Rust compiler's perspective these are totally different traits.<br/>
+
+The fix is to upgrade or downgrade libraries as appropriate until the Serde versions match. <br/>
+The cargo tree -d command is helpful for finding all the places that duplicate dependencies are being pulled in.<br/>
