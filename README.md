@@ -1,5 +1,7 @@
 #### Notes
 
+> FYI : All Of This Code Is `Not Proprietary` & Is Documented Publicly On The Web
+
 Rust Playground
 
 https://play.rust-lang.org/

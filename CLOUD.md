@@ -1,5 +1,7 @@
 #### Notes
 
+> FYI : All Of This Code Is `Not Proprietary` & Is Documented Publicly On The Web
+
 Rust Playground
 
 https://play.rust-lang.org/
@@ -2685,6 +2687,7 @@ reqwest-middleware = "0.2.0"
 gcp-bigquery-client = "0.16.5"
 chrono = "0.4.23"
 clap = { version = "4.1.4", features = ["derive"] }
+simple-log = "1.6.0"
 ```
 
 Export Environment Variables
@@ -2697,8 +2700,8 @@ Program Help
 
 ```bash
 target/release/azure-rust -h
-Cloud Data Tooling >
-Usage: azure-rust --gcp-project-name <GCP_PROJECT_NAME> --bq-data-set <BQ_DATA_SET> --bq-table-name <BQ_TABLE_NAME> --azure-client-id <AZURE_CLIENT_ID> --azure-client-secret <AZURE_CLIENT_SECRET> --azure-tenant-id <AZURE_TENANT_ID> --azure-region-name <AZURE_REGION_NAME> --azure-entity <AZURE_ENTITY>
+| Cloud Data Tooling |
+Usage: azure-rust [OPTIONS] --gcp-project-name <GCP_PROJECT_NAME> --bq-data-set <BQ_DATA_SET> --bq-table-name <BQ_TABLE_NAME> --azure-client-id <AZURE_CLIENT_ID> --azure-client-secret <AZURE_CLIENT_SECRET> --azure-tenant-id <AZURE_TENANT_ID> --azure-region-name <AZURE_REGION_NAME> --azure-entity <AZURE_ENTITY>
 
 Options:
       --gcp-project-name <GCP_PROJECT_NAME>
@@ -2715,8 +2718,10 @@ Options:
           Azure Tenant ID
       --azure-region-name <AZURE_REGION_NAME>
           Azure Region Name (america | china)
+      --scrape-all <SCRAPE_ALL>
+          Azure : All Entities [default: 0]
       --azure-entity <AZURE_ENTITY>
-          Azure Entity To Scrape ('microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines')
+          Azure Entity To Scrape ( 'microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines' | 'microsoft.resourcehealth/availabilitystatuses' | 'microsoft.network/networkinterfaces' | 'microsoft.resources/subscriptions/resourcegroups' | 'microsoft.resources/subscriptions' )
   -h, --help
           Print help
   -V, --version
@@ -2778,6 +2783,11 @@ use clap::Parser;
 
 use std::mem;
 
+#[macro_use]
+extern crate simple_log;
+
+use simple_log::LogConfigBuilder;
+
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -2810,8 +2820,12 @@ struct Args {
     #[arg(long)]
     azure_region_name: String,
 
+    /// Azure : All Entities
+    #[arg(long, default_value_t=0)]
+    scrape_all: u8,
+
     /// Azure Entity To Scrape
-    /// ('microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines')
+    /// ( 'microsoft.compute/virtualmachines' | 'microsoft.compute/virtualmachinescalesets/virtualmachines' | 'microsoft.resourcehealth/availabilitystatuses' | 'microsoft.network/networkinterfaces' | 'microsoft.resources/subscriptions/resourcegroups' | 'microsoft.resources/subscriptions' )
     #[arg(long)]
     azure_entity: String,
 }
@@ -2828,19 +2842,23 @@ struct CustomError {
     err_msg: String
 }
 
-#[derive(PartialEq, Eq, Clone, Copy, Hash)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy, Hash)]
 enum TokenType {
     AzureApiToken,
     AzureGraphToken,
 }
 
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[derive(Debug, Clone, Copy, Eq, Hash, PartialEq)]
 enum AzureRecord {
     VirtualMachine,
     ScaleSets,
+    HealthResources,
+    NetworkInterfaces,
+    ResourceGroup,
+    Subscriptions,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct ServicePrincipal {
     azure_client_id: String,
     azure_client_secret: String,
@@ -2917,6 +2935,10 @@ fn get_azure_record(azure_record: AzureRecord) -> String {
     return match azure_record {
         AzureRecord::VirtualMachine => "microsoft.compute/virtualmachines".to_owned(),
         AzureRecord::ScaleSets => "microsoft.compute/virtualmachinescalesets/virtualmachines".to_owned(),
+        AzureRecord::HealthResources => "microsoft.resourcehealth/availabilitystatuses".to_owned(),
+        AzureRecord::NetworkInterfaces => "microsoft.network/networkinterfaces".to_owned(),
+        AzureRecord::ResourceGroup => "microsoft.resources/subscriptions/resourcegroups".to_owned(),
+        AzureRecord::Subscriptions => "microsoft.resources/subscriptions".to_owned(),
     }
 }
 
@@ -2924,9 +2946,52 @@ fn get_azure_record_from_str(azure_record_str: &str) -> AzureRecord {
     return match azure_record_str {
         "microsoft.compute/virtualmachines" => AzureRecord::VirtualMachine,
         "microsoft.compute/virtualmachinescalesets/virtualmachines" => AzureRecord::ScaleSets,
+        "microsoft.resourcehealth/availabilitystatuses" => AzureRecord::HealthResources,
+        "microsoft.network/networkinterfaces" => AzureRecord::NetworkInterfaces,
+        "microsoft.resources/subscriptions/resourcegroups" => AzureRecord::ResourceGroup,
+        "microsoft.resources/subscriptions" => AzureRecord::Subscriptions,
         _ => AzureRecord::VirtualMachine,
     }
 }
+
+#[derive(Clone, Debug)]
+struct AzureRecordBQDataIngestion {
+    az_record: AzureRecord,
+    spn: ServicePrincipal,
+    records_per_page: i32,
+    write_json_to_file: bool,
+    gcp_project: String,
+    bq_data_set: String,
+    bq_table: String,
+}
+
+impl AzureRecordBQDataIngestion {
+    fn scrape_azure_and_store_in_bq(&self) {
+        let now_az_query = time::Instant::now();
+
+        let all_records;
+        if self.az_record == AzureRecord::HealthResources {
+            all_records = get_all_azure_records_in_sequence(&self.spn, self.az_record, self.records_per_page, self.write_json_to_file);
+        } else {
+            all_records = get_all_azure_records_in_parallel(&self.spn, self.az_record, self.records_per_page, self.write_json_to_file);
+        }
+
+        let elapsed_az_query = now_az_query.elapsed();
+
+        let now_bq_query = time::Instant::now();
+        perform_bigquery_inserts_for_azure_record(self.az_record, &all_records, self.gcp_project.to_string(), self.bq_data_set.to_string(), self.bq_table.to_string());
+        let elapsed_bq_query = now_bq_query.elapsed();
+
+        println!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total azure-records : {:.2?}", self.az_record, all_records.len());
+        println!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total time for azure-query : {:.2?}", self.az_record, elapsed_az_query);
+        println!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total time for bq-query : {:.2?}", self.az_record, elapsed_bq_query);
+
+        debug!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total azure-records : {:.2?}",  self.az_record, all_records.len());
+        debug!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total time for azure-query : {:.2?}", self.az_record, elapsed_az_query);
+        debug!("__FUNC__ : scrape_azure_and_store_in_bq() : record : {:?} , total time for bq-query : {:.2?}", self.az_record, elapsed_bq_query);
+    }
+}
+
 
 impl ServicePrincipal {
 
@@ -3033,6 +3098,8 @@ impl ServicePrincipal {
 
         let client = reqwest::blocking::Client::new();
 
+        // ------------------------------------------------------------------
+
         let res = client.post(authority_url).form(&params).send();
 
         let result =  match res {
@@ -3078,23 +3145,15 @@ impl ServicePrincipal {
 
         let az_record = AzRecord { azure_record: azure_record.to_owned() };
 
-        let total_records_from_cache = match APP_CACHE_TOTAL_RECORDS.get(&az_record) {
-            None => {
-                println!("__FUNC__ : get_total_records() : MISSING_TOTAL_RECORDS in APP_CACHE_TOTAL_RECORDS");
-                0
-            }
-            Some(d) => {
-                println!("__FUNC__ : get_total_records() : APP_CACHE_TOTAL_RECORDS : total_records_from_cache : {}", d);
-                d
-            }
-        };
+        let total_records_from_cache = APP_CACHE_TOTAL_RECORDS.get(&az_record).unwrap_or(0);
 
         if total_records_from_cache != 0 {
             println!("__FUNC__ : get_total_records() : total_records_from_cache : {}", total_records_from_cache);
+            debug!("__FUNC__ : get_total_records() : total_records_from_cache : {}", total_records_from_cache);
             return total_records_from_cache
         }
 
-        println!("__FUNC__ : data not found in cache !");
+        println!("__FUNC__ : get_total_records() : data not found in cache !");
 
         //----------------------------------------------------------------------------------------
 
@@ -3120,8 +3179,24 @@ impl ServicePrincipal {
                 let q = format!("Resources | where type == '{}' | summarize count()", record_name);
                 q
             },
+            AzureRecord::ResourceGroup => {
+                let q = format!("ResourceContainers | where type == '{}' | summarize count()", record_name);
+                q
+            },
+            AzureRecord::Subscriptions => {
+                let q = format!("ResourceContainers | where type == '{}' | summarize count()", record_name);
+                q
+            },
             AzureRecord::ScaleSets => {
                 let q = format!("ComputeResources | where type == '{}' |  summarize count()", record_name);
+                q
+            },
+            AzureRecord::HealthResources => {
+                let q = format!("HealthResources | where type == '{}' |  summarize count()", record_name);
+                q
+            },
+            AzureRecord::NetworkInterfaces => {
+                let q = format!("Resources | where type == '{}' |  summarize count()", record_name);
                 q
             },
         };
@@ -3134,38 +3209,35 @@ impl ServicePrincipal {
         println!("json_payload:");
         println!("{:#?}", json_payload);
 
-        let total_records = match self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()) {
-            Ok(d) => {
-                let client = reqwest::blocking::Client::new();
-                let token = d.to_owned();
-                println!("token for azure_data_explorer : {}", token.as_str());
-                let now = time::Instant::now();
-                let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
-                    Ok(d) => {
-                        let elapsed = now.elapsed();
-                        let json_str = d.text().unwrap();
-                        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
-                        println!("{}", serde_json::to_string_pretty(&json_data).unwrap());
-                        let total_records = &json_data["data"]["rows"][0][0].as_u64().unwrap();
-                        println!("total_records : {}", total_records);
-                        println!("TTT : {:.2?}", elapsed);
-                        total_records.to_owned()
-                    },
-                    Err(e) => {
-                        println!("error : could not make http request for adx query : {:?}", e);
-                        0 as u64
-                    },
-                };
-                res
-            }, // Ok
-            Err(e) => {
-                println!("error : could not fetch token : {:#?}", e);
-                0
-            }, // Err
-        };
+        let token =  self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()).unwrap();
+
+        let client = reqwest::blocking::Client::new();
+
+        let now = time::Instant::now();
+
+        let resp = client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send().unwrap();
+
+        let elapsed = now.elapsed();
+
+        let json_str = resp.text().unwrap();
+
+        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+
+        println!("{}", serde_json::to_string_pretty(&json_data).unwrap());
+        debug!("{}", serde_json::to_string_pretty(&json_data).unwrap());
+
+        let total_records = &json_data["data"]["rows"][0][0].as_u64().unwrap();
+
+        println!("total_records : {}", total_records);
+        debug!("total_records : {}", total_records);
+
+        println!("TTT : {:.2?}", elapsed);
+        debug!("TTT : {:.2?}", elapsed);
+
         APP_CACHE_TOTAL_RECORDS.insert(az_record, total_records.to_owned());
+
         println!("__FUNC__ : get_total_records() : total_records : {}", total_records_from_cache);
-        total_records
+        total_records.to_owned()
     }
 
     fn get_azure_records(&self, azure_record: AzureRecord, top: i32, skip: i32) -> Vec<Value> {
@@ -3204,8 +3276,24 @@ impl ServicePrincipal {
                 let q = format!("Resources | where type =~ '{}'", azure_entity);
                 q
             },
+            AzureRecord::ResourceGroup => {
+                let q = format!("ResourceContainers | where type =~ '{}'", azure_entity);
+                q
+            },
+            AzureRecord::Subscriptions => {
+                let q = format!("ResourceContainers | where type =~ '{}'", azure_entity);
+                q
+            },
             AzureRecord::ScaleSets => {
                 let q = format!("ComputeResources | where type=~ '{}'", azure_entity);
+                q
+            },
+            AzureRecord::HealthResources => {
+                let q = format!("HealthResources | where type=~ '{}'", azure_entity);
+                q
+            },
+            AzureRecord::NetworkInterfaces => {
+                let q = format!("Resources | where type=~ '{}'", azure_entity);
                 q
             },
         };
@@ -3222,58 +3310,39 @@ impl ServicePrincipal {
 
         println!("{}", serde_json::to_string_pretty(&json_payload).unwrap());
 
-        let azure_data = match self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()) {
-            Ok(d) => {
+        // --------------------------------------------------------------------
 
-                let client = reqwest::blocking::Client::new();
+        let token =  self.get_token(TokenType::AzureGraphToken, my_scope.to_owned()).unwrap();
 
-                let token = d.to_owned();
-                let now = time::Instant::now();
+        let client = reqwest::blocking::Client::new();
 
-                if azure_record == AzureRecord::ScaleSets {
-                    let my_sleep_duration = time::Duration::from_millis(3000);
-                    thread::sleep(my_sleep_duration);
-                }
+        let now = time::Instant::now();
 
-                let res = match client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send() {
-                    Ok(d) => {
-                        let elapsed = now.elapsed();
+        if azure_record == AzureRecord::ScaleSets {
+            let my_sleep_duration = time::Duration::from_millis(3000);
+            thread::sleep(my_sleep_duration);
+        }
 
-                        println!("azure_data_explorer query result:");
-                        let json_str = d.text().unwrap();
-                        let json_data: Value = serde_json::from_str(json_str.as_str()).unwrap();
+        let row_data: Vec<Value> = vec![];
 
-                        // println!("{:#?}", json_data);
+        let resp_str = client.post(api_url.as_str()).body(json_payload.to_string()).header(CONTENT_TYPE, "application/json").header(AUTHORIZATION, token.as_str()).send().unwrap().text().unwrap();
 
-                        let rows = &json_data["data"]["rows"];
+        let elapsed = now.elapsed();
 
-                        println!("TTT (top : {} , skip : {}) : {:.2?}", top, skip, elapsed);
+        let json_data: Value = serde_json::from_str(resp_str.as_str()).unwrap();
 
-                        let row_data = match rows.as_array() {
-                            None => {
-                                println!("oops : could not find any row data !");
-                                empty_vec
-                            },
-                            Some(d) => {
-                                println!("found rows !");
-                                d.to_vec()
-                            },
-                        };
-                        row_data
-                    },
-                    Err(e) => {
-                        println!("error : could not make http request for adx query : {:?}", e);
-                        empty_vec
-                    },
-                };
-                res.to_owned()
-            },
-            Err(e) => {
-                println!("error : could not fetch token : {:#?}", e);
-                empty_vec
-            },
-        };
-        azure_data
+        let rows = &json_data["data"]["rows"];
+
+        println!("TTT (top : {} , skip : {}) : {:.2?}", top, skip, elapsed);
+        debug!("TTT (top : {} , skip : {}) : {:.2?}", top, skip, elapsed);
+
+        let row_data = rows.as_array().unwrap_or(&empty_vec);
+
+        println!("total_records_fetched : {:?}", row_data.len());
+        debug!("total_records_fetched : {:?}", row_data.len());
+
+        return row_data.to_vec();
+
     }
 
     fn get_total_pages_for_all_records(&self, azure_record: AzureRecord, records_per_page: i32) -> i32 {
@@ -3409,7 +3478,8 @@ struct AzureGenericRecord {
     scrape_ts: String,
     id: String,
     name: String,
-    az_type: String,
+    #[serde(rename(serialize = "type", deserialize = "type"))]
+    my_type: String,
     tenant_id: String,
     location: String,
     resource_group: String,
@@ -3472,9 +3542,11 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
 
     let (sender, receiver) = mpsc::channel();
 
-    let v_chunked: Vec<Vec<i32>> = page_numbers.chunks(8).map(|x| x.to_vec()).collect();
+    let mut v_chunked: Vec<Vec<i32>> = vec![];
 
-    println!("v_chunked : {:?}", v_chunked);
+    v_chunked = page_numbers.chunks(8).map(|x| x.to_vec()).collect();
+
+    println!("v_chunked : {:#?}", v_chunked);
 
     let mut all_records: Vec<Value> = Vec::new();
 
@@ -3527,6 +3599,43 @@ fn get_all_azure_records_in_parallel(service_principal: &ServicePrincipal, azure
     all_records
 }
 
+fn get_all_azure_records_in_sequence(service_principal: &ServicePrincipal, azure_record: AzureRecord, records_per_page: i32, write_json_to_file: bool) -> Vec<Value> {
+
+    println!("__FUNC__ : get_all_azure_records_in_parallel() ...");
+
+    let now = time::Instant::now();
+
+    let total_pages = service_principal.get_total_pages_for_all_records(azure_record, records_per_page);
+
+    let mut page_numbers: Vec<i32> = Vec::new();
+
+    for i in 1..=total_pages {
+        page_numbers.push(i);
+    }
+
+    let mut all_records: Vec<Value> = Vec::new();
+
+    for page_numer in page_numbers {
+        let spn = service_principal.to_owned();
+        let records = spn.get_all_azure_records_for_page(page_numer, azure_record, records_per_page);
+
+        println!("records fetched so far : {}", records.len());
+        for rec in records {
+            all_records.push(rec);
+        }
+        println!("total records fetched so far : {}", all_records.len());
+    }
+
+    write_vec_of_values_to_file("".to_string(), &all_records, Some(azure_record));
+
+    let elapsed = now.elapsed();
+
+    println!("__FUNC__ : get_all_azure_records_in_sequence() : final_time : {:.2?}", elapsed);
+
+    all_records
+}
+
+
 fn write_vec_of_values_to_file(mut output_file: String, all_records: &Vec<Value>, azure_record: Option<AzureRecord>) {
     let out_file_for_azure_record = match azure_record {
         None => {
@@ -3578,23 +3687,27 @@ async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, al
         };
 
         /*
-            scrape_ts: String,
-            id: String,
-            name: String,
-            az_type: String,
-            tenant_id: String,
-            location: String,
-            resource_group: String,
-            subscription_id: String,
-            properties: String,
-            tags: String,
-            plan: String,
-            identity: String,
-            zones: String,
-            extended_location: String,
-            kind: String,
-            managed_by: String,
-            sku: String,
+            #[derive(Serialize, Debug, Clone)]
+            struct AzureGenericRecord {
+                scrape_ts: String,
+                id: String,
+                name: String,
+                #[serde(rename(serialize = "type", deserialize = "type"))]
+                my_type: String,
+                tenant_id: String,
+                location: String,
+                resource_group: String,
+                subscription_id: String,
+                properties: String,
+                tags: String,
+                plan: String,
+                identity: String,
+                zones: String,
+                extended_location: String,
+                kind: String,
+                managed_by: String,
+                sku: String,
+            }
         */
 
         let default_value_for_missing_data = json!(null).to_string();
@@ -3606,37 +3719,37 @@ async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, al
         let location = record[5].as_str().unwrap();
         let resource_group = record[6].as_str().unwrap();
         let subscription_id = record[7].as_str().unwrap();
-
-        let props = record[11].as_str().unwrap_or(default_value_for_missing_data.as_str());
-        let my_tags = record[12].as_str().unwrap_or(default_value_for_missing_data.as_str());
-        let my_plan = record[10].as_str().unwrap_or(default_value_for_missing_data.as_str());
-        let my_identity = record[13].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let props = serde_json::to_string(&record[11]).unwrap_or(default_value_for_missing_data.to_owned());
+        let my_tags = serde_json::to_string(&record[12]).unwrap_or(default_value_for_missing_data.to_owned());
+        let my_identity = serde_json::to_string(&record[13]).unwrap_or(default_value_for_missing_data.to_owned());
         let my_zone = record[14].as_str().unwrap_or(default_value_for_missing_data.as_str());
         let my_extended_locaton = record[15].as_str().unwrap_or(default_value_for_missing_data.as_str());
         let my_kind = record[4].as_str().unwrap_or(default_value_for_missing_data.as_str());
         let my_managed_by = record[8].as_str().unwrap_or(default_value_for_missing_data.as_str());
-        let my_sku = record[9].as_str().unwrap_or(default_value_for_missing_data.as_str());
+        let my_sku = serde_json::to_string(&record[9]).unwrap_or(default_value_for_missing_data.to_owned());
+        let my_plan = serde_json::to_string(&record[10]).unwrap_or(default_value_for_missing_data.to_owned());
 
         let metadata = AzureGenericRecord {
             scrape_ts: time_stamp.to_string(),
             id: rec_id.to_string(),
             name: rec_name.to_string(),
-            az_type: az_type.to_string(),
+            my_type: az_type.to_string(),
             tenant_id: tenant_id.to_string(),
             location: location.to_string(),
             resource_group: resource_group.to_string(),
             subscription_id: subscription_id.to_string(),
-            properties:  props.to_string(),
-            tags: my_tags.to_string(),
-
-            plan: my_plan.to_string(),
-            identity: my_identity.to_string(),
+            properties:  props,
+            tags: my_tags,
+            plan: my_plan,
+            identity: my_identity,
             zones: my_zone.to_string(),
             extended_location: my_extended_locaton.to_string(),
             kind: my_kind.to_string(),
             managed_by: my_managed_by.to_string(),
-            sku: my_sku.to_string(),
+            sku: my_sku,
         };
+
+        // println!("{}", serde_json::to_string_pretty(&metadata).unwrap());
 
         vec_bq_insert.push(metadata);
     }
@@ -3676,13 +3789,35 @@ async fn perform_bigquery_inserts_for_azure_record(azure_record: AzureRecord, al
 
 
 fn main() {
-    println!("Cloud Data Tooling >");
+    println!("| Cloud Data Tooling |");
+
+    simple_log::quick!("debug", "/tmp/_tool.log");
+
+    /*
+    let config = LogConfigBuilder::builder()
+        .path("./_tool.log")
+        .size(1 * 100)
+        .roll_count(10)
+        .time_format("%Y-%m-%d %H:%M:%S.%f")
+        .level("debug")
+        .output_file()
+        .build();
+
+    simple_log::new(config).unwrap();
+    */
+
+    /*
+        debug!("test builder debug");
+        info!("test builder info");
+    */
 
     let args = Args::parse();
 
     let gcp_project_name = args.gcp_project_name;
     let bq_data_set = args.bq_data_set;
     let bq_table_name = args.bq_table_name;
+
+    let scrape_all = args.scrape_all;
 
     let azure_tenant_id = args.azure_tenant_id;
     let azure_client_id = args.azure_client_id;
@@ -3704,28 +3839,123 @@ fn main() {
     // graph token
     let graph_token = service_principal.get_token(TokenType::AzureGraphToken, None).unwrap();
 
-    let az_entity = args.azure_entity.as_str();
+    let mut all_scrapes_and_bq_ingestions: Vec<AzureRecordBQDataIngestion> = vec![];
 
-    let az_record = get_azure_record_from_str(az_entity);
-
-    let entity = match az_record {
-        AzureRecord::VirtualMachine => {
-            /// virtual machines
-            let now_az_query = time::Instant::now();
-            let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::VirtualMachine, 1000, true);
-            let elapsed_az_query = now_az_query.elapsed();
-            println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
-            perform_bigquery_inserts_for_azure_record(AzureRecord::VirtualMachine, &all_recs, gcp_project_name.to_string(), bq_data_set.to_string(), bq_table_name.to_string());
-        },
-        AzureRecord::ScaleSets => {
-            /// vmss (scale sets)
-            let now_az_query = time::Instant::now();
-            let all_recs = get_all_azure_records_in_parallel(&service_principal, AzureRecord::ScaleSets, 1000, true);
-            let elapsed_az_query = now_az_query.elapsed();
-            println!("__FUNC__ : total time for azure query : {:.2?}", elapsed_az_query);
-            perform_bigquery_inserts_for_azure_record(AzureRecord::ScaleSets, &all_recs, gcp_project_name.to_string(), bq_data_set.to_string(), bq_table_name.to_string())
-        },
+    let scrape1 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::VirtualMachine,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
     };
+
+    let scrape2 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::NetworkInterfaces,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
+    };
+
+    let scrape3 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::ResourceGroup,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
+    };
+
+    let scrape4 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::Subscriptions,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
+    };
+
+    let scrape5 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::ScaleSets,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
+    };
+
+    let scrape6 = AzureRecordBQDataIngestion {
+        az_record: AzureRecord::HealthResources,
+        spn: service_principal.clone(),
+        records_per_page: 1000,
+        write_json_to_file: true,
+        gcp_project: gcp_project_name.to_string(),
+        bq_data_set: bq_data_set.to_string(),
+        bq_table: bq_table_name.to_string(),
+    };
+
+    all_scrapes_and_bq_ingestions.push(scrape1.to_owned());
+    all_scrapes_and_bq_ingestions.push(scrape2.to_owned());
+    all_scrapes_and_bq_ingestions.push(scrape3.to_owned());
+    all_scrapes_and_bq_ingestions.push(scrape4.to_owned());
+    all_scrapes_and_bq_ingestions.push(scrape5.to_owned());
+    all_scrapes_and_bq_ingestions.push(scrape6.to_owned());
+
+    if scrape_all == 1 {
+
+        let mut thread_handles = vec![];
+
+        for scrape in all_scrapes_and_bq_ingestions {
+            let thread_handle = thread::spawn(move || {
+                scrape.scrape_azure_and_store_in_bq();
+            });
+            thread_handles.push(thread_handle);
+        }
+
+        for thread_handle in thread_handles {
+            thread_handle.join().unwrap();
+        }
+
+
+    } else {
+        let az_entity = args.azure_entity.as_str();
+
+        let az_record = get_azure_record_from_str(az_entity);
+
+        let entity = match az_record {
+            AzureRecord::VirtualMachine => {
+                /// virtual machines
+                &scrape1.scrape_azure_and_store_in_bq();
+            },
+            AzureRecord::NetworkInterfaces => {
+                /// network interfaces
+                &scrape2.scrape_azure_and_store_in_bq();
+            },
+            AzureRecord::ResourceGroup => {
+                /// resource groups
+                &scrape3.scrape_azure_and_store_in_bq();
+            },
+            AzureRecord::Subscriptions => {
+                /// subscriptions
+                &scrape4.scrape_azure_and_store_in_bq();
+            },
+            AzureRecord::ScaleSets => {
+                /// scale sets
+                &scrape5.scrape_azure_and_store_in_bq();
+            },
+            AzureRecord::HealthResources => {
+                /// health resources
+                &scrape6.scrape_azure_and_store_in_bq();
+            },
+        };
+    }
 
 }
 ```
