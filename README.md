@@ -3813,3 +3813,15 @@ Output
 ```bash
 [1, 2, 3, -1]
 ```
+
+#### Cross Compile : Build For Linux
+
+```bash
+rustup target add x86_64-unknown-linux-gnu
+```
+
+Build
+
+```bash
+cargo build --release --target=x86_64-unknown-linux-gnu
+```
