@@ -3776,3 +3776,40 @@ Serialize trait from serde 0.9. From the Rust compiler's perspective these are t
 
 The fix is to upgrade or downgrade libraries as appropriate until the Serde versions match. <br/>
 The cargo tree -d command is helpful for finding all the places that duplicate dependencies are being pulled in.<br/>
+
+#### Map Function & Iter (Iterator)
+
+```rust
+fn main() {
+    let str_numbers: Vec<&str> = vec!["1", "2", "3"];
+    let numbers: Vec<u32> = str_numbers.iter().map(|str_number| str_number.parse::<u32>().unwrap()).collect();
+    print!("{:?}", numbers)
+}
+```
+
+Output
+
+```bash
+[1, 2, 3]
+```
+
+In Case Of Incorrect Data Types, Use `unwrap_or( <default_value> )`
+
+Using `i32` below, becuase we are returning `-1` (in case of `unwrap()` errors)
+
+```rust
+fn main() {
+    let str_numbers: Vec<&str> = vec!["1", "2", "3", "xyz"];
+    let numbers: Vec<i32> = str_numbers
+        .iter()
+        .map(|str_number| str_number.parse::<i32>().unwrap_or(-1))
+        .collect();
+    print!("{:?}", numbers)
+}
+```
+
+Output
+
+```bash
+[1, 2, 3, -1]
+```
