@@ -3825,3 +3825,7 @@ Build
 ```bash
 cargo build --release --target=x86_64-unknown-linux-gnu
 ```
+
+#### Rust Lifetimes Explained
+
+[![Everything Is AWESOME](https://img.youtube.com/vi/juIINGuZyBc/0.jpg)](https://www.youtube.com/watch?v=juIINGuZyBc "Rust Lifetimes")
