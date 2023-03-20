@@ -3829,3 +3829,76 @@ cargo build --release --target=x86_64-unknown-linux-gnu
 #### Rust Lifetimes Explained
 
 [![Everything Is AWESOME](https://img.youtube.com/vi/juIINGuZyBc/maxresdefault.jpg)](https://www.youtube.com/watch?v=juIINGuZyBc "Rust Lifetimes")
+
+#### Calling Async Functions From Non Async Functions : Tokio Runtime
+
+Make sure you export Google Service Account JSON File (Environment Variable)
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS="$HOME/my-account.json"
+```
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "gcs"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+google-cloud-storage = "0.10.0"
+google-cloud-default = { version = "0.1.1", features = ["storage"] }
+simple_logger = { version = "4.0.0", features = ["colors", "timestamps"] }
+tokio = { version = "1.24.1", features = ["full"] }
+log = { version = "0.4", features = ["std", "serde"] }
+futures = "0.3.27"
+```
+
+`src/main.rs`
+
+```rust
+use google_cloud_storage::client::Client;
+use google_cloud_storage::sign::SignedURLOptions;
+use google_cloud_storage::sign::SignedURLMethod;
+use google_cloud_storage::http::Error;
+use google_cloud_storage::http::objects::download::Range;
+use google_cloud_storage::http::objects::get::GetObjectRequest;
+use google_cloud_storage::http::objects::upload::UploadObjectRequest;
+use tokio::task::JoinHandle;
+use std::fs::File;
+use std::future::Future;
+use std::io::BufReader;
+use std::io::Read;
+use google_cloud_default::WithAuthExt;
+use google_cloud_storage::client::ClientConfig;
+use google_cloud_storage::http::objects::Object;
+use google_cloud_storage::http::objects::upload::{Media, UploadType};
+use futures::executor::block_on;
+use tokio::task;
+use tokio::runtime::Runtime;
+
+
+fn upload_data_to_gcs() {
+    let rt  = Runtime::new().unwrap();
+    rt.block_on(async {
+        // Create client.
+        let config = ClientConfig::default().with_auth().await.unwrap();
+        let mut client = Client::new(config);
+
+        // Upload the file
+        let upload_type = UploadType::Simple(Media::new("mac.webp"));
+
+        let uploaded = client.upload_object(&UploadObjectRequest {
+            bucket: "rubucket".to_string(),
+            ..Default::default()
+        }, "hello world".as_bytes(), &upload_type).await;
+    });
+}
+
+fn main() {
+    upload_data_to_gcs();
+}
+```
