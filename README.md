@@ -3877,8 +3877,11 @@ use google_cloud_storage::client::ClientConfig;
 use google_cloud_storage::http::objects::Object;
 use google_cloud_storage::http::objects::upload::{Media, UploadType};
 use futures::executor::block_on;
+use google_cloud_storage::http::buckets::Bucket;
 use tokio::task;
 use tokio::runtime::Runtime;
+
+use std::io;
 
 
 fn upload_data_to_gcs() {
@@ -3888,13 +3891,26 @@ fn upload_data_to_gcs() {
         let config = ClientConfig::default().with_auth().await.unwrap();
         let mut client = Client::new(config);
 
+
+        let mut bytes: Vec<u8> = Vec::new();
+        for byte in File::open("mac.webp").unwrap().bytes() {
+            bytes.push(byte.unwrap());
+        }
+
+        let f = File::open("mac.webp").unwrap();
+        let mut reader = BufReader::new(f);
+        let mut buffer = Vec::new();
+
+        // Read file into vector.
+        reader.read_to_end(&mut buffer).unwrap();
+
         // Upload the file
         let upload_type = UploadType::Simple(Media::new("mac.webp"));
 
         let uploaded = client.upload_object(&UploadObjectRequest {
             bucket: "rubucket".to_string(),
             ..Default::default()
-        }, "hello world".as_bytes(), &upload_type).await;
+        }, buffer, &upload_type).await;
     });
 }
 
