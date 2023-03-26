@@ -3918,3 +3918,231 @@ fn main() {
     upload_data_to_gcs();
 }
 ```
+
+#### Reading TOML (Config) Files
+
+File : `Cargo.toml`
+
+```toml
+[package]
+name = "toml-read"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+toml = "0.7.3"
+serde = "1.0.158"
+serde_derive = "1.0.158"
+```
+
+File : `app_config_azure.toml`
+
+```toml
+[[azure_entity_spn]]
+azure_client_id = "00000000-0000-0000-0000-000000000111"
+azure_client_secret = "<RANDOM_STR_001>"
+azure_tenant_id = "00000000-0000-0000-0000-000000000999"
+azure_region_name = "america"
+entity_type = "microsoft.compute/virtualmachines"
+
+[[azure_entity_spn]]
+azure_client_id = "00000000-0000-0000-0000-000000000222"
+azure_client_secret = "<RANDOM_STR_002>"
+azure_tenant_id = "00000000-0000-0000-0000-000000000999"
+azure_region_name = "america"
+entity_type = "microsoft.compute/virtualmachinescalesets/virtualmachines"
+```
+
+File : `app_config_global.toml`
+
+```toml
+[gcpbqmetadata]
+gcp_project_name = "my-test-gcp-project"
+gcp_bq_dataset = "my-dataset"
+gcp_bq_table = "my-table-001"
+
+[microsoftcomputevirtualmachines]
+azure_client_id = "00000000-0000-0000-0000-000000000111"
+azure_client_secret = "<RANDOM_STR_001>"
+azure_tenant_id = "00000000-0000-0000-0000-000000000999"
+azure_region_name = "america"
+```
+
+File : `src/main.rs`
+
+```rust
+use std::collections::HashMap;
+// Import the required dependencies.
+use serde_derive::Deserialize;
+use std::fs;
+use std::process::exit;
+use toml;
+use toml::from_str;
+
+// Top level struct to hold the TOML data.
+#[derive(Deserialize,Debug)]
+struct Data {
+    microsoftcomputevirtualmachines: AzureMetadata,
+    gcpbqmetadata: GCPMetadata,
+}
+
+#[derive(Deserialize,Debug)]
+struct AzureMetadata {
+    azure_client_id: String,
+    azure_client_secret: String,
+    azure_tenant_id: String,
+    azure_region_name: String,
+}
+
+#[derive(Deserialize,Debug)]
+struct GCPMetadata {
+    gcp_project_name: String,
+    gcp_bq_dataset: String,
+    gcp_bq_table: String,
+}
+
+#[derive(Deserialize,Debug)]
+struct AzureMetadataItem {
+    azure_client_id: String,
+    azure_client_secret: String,
+    azure_tenant_id: String,
+    azure_region_name: String,
+    entity_type: String,
+}
+
+fn get_toml_file_contents(file_name: String) -> String {
+    // Variable that holds the filename as a `&str`.
+    let filename = file_name.as_str();
+
+    // Read the contents of the file using a `match` block
+    // to return the `data: Ok(c)` as a `String`
+    // or handle any `errors: Err(_)`.
+    let contents = match fs::read_to_string(filename) {
+        // If successful return the files text as `contents`.
+        // `c` is a local variable.
+        Ok(c) => c,
+        // Handle the `error` case.
+        Err(_) => {
+            // Write `msg` to `stderr`.
+            eprintln!("Could not read file `{}`", filename);
+            // Exit the program with exit code `1`.
+            exit(1);
+        }
+    };
+    contents
+}
+
+fn main() {
+
+    let file_name_toml_gcp = "app_config_global.toml";
+
+    let contents_toml_config_gcp = get_toml_file_contents(file_name_toml_gcp.to_string());
+
+    // --------- part-1 ----------
+
+    // Use a `match` block to return the
+    // file `contents` as a `Data struct: Ok(d)`
+    // or handle any `errors: Err(_)`.
+
+    let data: Data = match toml::from_str(&contents_toml_config_gcp) {
+        // If successful, return data as `Data` struct.
+        // `d` is a local variable.
+        Ok(d) => d,
+        // Handle the `error` case.
+        Err(_) => {
+            // Write `msg` to `stderr`.
+            eprintln!("Unable to load data from `{}`", file_name_toml_gcp);
+            // Exit the program with exit code `1`.
+            exit(1);
+        }
+    };
+
+    println!("---[part-1]---\n");
+
+    println!("---[gcp]---");
+
+    println!("{}", data.gcpbqmetadata.gcp_project_name);
+    println!("{}", data.gcpbqmetadata.gcp_bq_dataset);
+
+    println!("---[azure]---");
+
+    println!("{}", data.microsoftcomputevirtualmachines.azure_client_id);
+    println!("{}", data.microsoftcomputevirtualmachines.azure_tenant_id);
+    println!("{}", data.microsoftcomputevirtualmachines.azure_region_name);
+
+    // --------- part-2 ----------
+
+    println!("\n---[part-2]---\n");
+
+    let file_name_toml_azure = "app_config_azure.toml";
+
+    let contents_toml_config_azure = get_toml_file_contents(file_name_toml_azure.to_string());
+
+    let items_table: HashMap<String, Vec<AzureMetadataItem>> = from_str(contents_toml_config_azure.as_str()).unwrap();
+    let items: &[AzureMetadataItem] = &items_table["azure_entity_spn"];
+
+    println!("---[items_table]---\n");
+    println!("{:#?}", items_table);
+
+    println!("---[items]---\n");
+    println!("{:#?}", items);
+
+}
+```
+
+Output Of : `cargo run`
+
+```bash
+---[part-1]---
+
+---[gcp]---
+my-test-gcp-project
+my-dataset
+---[azure]---
+00000000-0000-0000-0000-000000000111
+00000000-0000-0000-0000-000000000999
+america
+
+---[part-2]---
+
+---[items_table]---
+
+{
+    "azure_entity_spn": [
+        AzureMetadataItem {
+            azure_client_id: "00000000-0000-0000-0000-000000000111",
+            azure_client_secret: "<RANDOM_STR_001>",
+            azure_tenant_id: "00000000-0000-0000-0000-000000000999",
+            azure_region_name: "america",
+            entity_type: "microsoft.compute/virtualmachines",
+        },
+        AzureMetadataItem {
+            azure_client_id: "00000000-0000-0000-0000-000000000222",
+            azure_client_secret: "<RANDOM_STR_002>",
+            azure_tenant_id: "00000000-0000-0000-0000-000000000999",
+            azure_region_name: "america",
+            entity_type: "microsoft.compute/virtualmachinescalesets/virtualmachines",
+        },
+    ],
+}
+---[items]---
+
+[
+    AzureMetadataItem {
+        azure_client_id: "00000000-0000-0000-0000-000000000111",
+        azure_client_secret: "<RANDOM_STR_001>",
+        azure_tenant_id: "00000000-0000-0000-0000-000000000999",
+        azure_region_name: "america",
+        entity_type: "microsoft.compute/virtualmachines",
+    },
+    AzureMetadataItem {
+        azure_client_id: "00000000-0000-0000-0000-000000000222",
+        azure_client_secret: "<RANDOM_STR_002>",
+        azure_tenant_id: "00000000-0000-0000-0000-000000000999",
+        azure_region_name: "america",
+        entity_type: "microsoft.compute/virtualmachinescalesets/virtualmachines",
+    },
+]
+```
