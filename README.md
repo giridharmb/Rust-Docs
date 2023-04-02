@@ -4182,3 +4182,92 @@ fn main() {
     assert_eq!(f, Foo::Baz);
 }
 ```
+
+#### Convert String To An Enum : With Custom Error Type
+
+```rust
+use std::error::Error;
+use std::str::FromStr;
+use std::fmt;
+use std::fmt::{Display, Formatter};
+
+
+#[derive(Debug)]
+pub enum MyCustomError {
+    MissingRecord,
+    NotImplemented,
+}
+
+impl Error for MyCustomError {}
+
+impl Display for MyCustomError {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        match self {
+            MyCustomError::MissingRecord => write!(f, "record_missing"),
+            MyCustomError::NotImplemented => write!(f, "record_not_implemented"),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq)]
+enum Foo {
+    Bar,
+    Baz,
+    Bat,
+    Quux,
+}
+
+fn get_record(input: &str) -> Result<Foo,Box<dyn Error>> {
+    match input {
+        "Bar"  => Ok(Foo::Bar),
+        "Baz"  => Ok(Foo::Baz),
+        "Bat"  => Ok(Foo::Bat),
+        "Quux" => Ok(Foo::Quux),
+        "xyz"  => Err(Box::try_from(MyCustomError::MissingRecord).unwrap()),
+        _      => Err(Box::try_from(MyCustomError::NotImplemented).unwrap()),
+    }
+}
+
+fn main() {
+    // case-1
+    let f = get_record("Baz");
+    match f {
+        Ok(d) => {
+            println!("{:#?}", d);
+        },
+        Err(e) => {
+            println!("data invalid: {:#?}", e);
+        },
+    }
+
+    // case-2
+    let f = get_record("Baz_");
+    match f {
+        Ok(d) => {
+            println!("{:#?}", d);
+        },
+        Err(e) => {
+            println!("oops : data invalid : {:#?}", e);
+        },
+    }
+
+    // case-3
+    let f = get_record("xyz");
+    match f {
+        Ok(d) => {
+            println!("{:#?}", d);
+        },
+        Err(e) => {
+            println!("oops : data invalid : {:#?}", e);
+        },
+    }
+}
+```
+
+Output
+
+```bash
+Baz
+oops : data invalid : NotImplemented
+oops : data invalid : MissingRecord
+```
