@@ -4271,3 +4271,77 @@ Baz
 oops : data invalid : NotImplemented
 oops : data invalid : MissingRecord
 ```
+
+#### Joining Futures (await)
+
+```rust
+use async_std::task;
+use std::time::Duration;
+use futures::{join};
+use futures::future::FutureExt;
+use futures::try_join;
+use async_std;
+use log::log;
+use simple_logger::SimpleLogger;
+
+#[tokio::main]
+async fn main() {
+    SimpleLogger::new().init().unwrap();
+
+    log::info!("starting main()...");
+
+    let f_1 = do_something_1();
+    let f_2 = do_something_2();
+
+    try_join!(f_1, f_2);
+
+    log::info!("end main() !");
+}
+
+async fn do_something_1() -> Result<(), String>{
+    log::info!(">> do_something_1()");
+    async_std::task::sleep(Duration::from_secs(2)).await;
+    log::info!("do_something_1() done !");
+    Ok(())
+}
+
+async fn do_something_2() -> Result<(), String> {
+    log::info!(">> do_something_2()");
+    async_std::task::sleep(Duration::from_secs(2)).await;
+    log::info!("do_something_2() done !");
+    Ok(())
+}
+```
+
+Output
+
+```bash
+2023-05-07T18:52:29.998Z INFO  [test_app] starting main()...
+2023-05-07T18:52:29.998Z INFO  [test_app] >> do_something_1()
+2023-05-07T18:52:29.999Z TRACE [polling::kqueue] new: kqueue_fd=9
+2023-05-07T18:52:29.999Z TRACE [polling] Poller::notify()
+2023-05-07T18:52:29.999Z TRACE [polling::kqueue] notify: kqueue_fd=9
+2023-05-07T18:52:29.999Z INFO  [test_app] >> do_something_2()
+2023-05-07T18:52:29.999Z TRACE [polling] Poller::notify()
+2023-05-07T18:52:29.999Z TRACE [async_io::driver] main_loop: waiting on I/O
+2023-05-07T18:52:29.999Z TRACE [async_io::reactor] process_timers: 0 ready wakers
+2023-05-07T18:52:29.999Z TRACE [polling] Poller::wait(_, Some(1.999334042s))
+2023-05-07T18:52:29.999Z TRACE [polling::kqueue] wait: kqueue_fd=9, timeout=Some(1.999334042s)
+2023-05-07T18:52:29.999Z TRACE [polling::kqueue] new events: kqueue_fd=9, res=1
+2023-05-07T18:52:29.999Z TRACE [async_io::reactor] process_timers: 0 ready wakers
+2023-05-07T18:52:29.999Z TRACE [async_io::reactor] react: 0 ready wakers
+2023-05-07T18:52:29.999Z TRACE [async_io::driver] main_loop: waiting on I/O
+2023-05-07T18:52:29.999Z TRACE [async_io::reactor] process_timers: 0 ready wakers
+2023-05-07T18:52:29.999Z TRACE [polling] Poller::wait(_, Some(1.999234083s))
+2023-05-07T18:52:29.999Z TRACE [polling::kqueue] wait: kqueue_fd=9, timeout=Some(1.999234083s)
+2023-05-07T18:52:31.999Z TRACE [polling::kqueue] new events: kqueue_fd=9, res=0
+2023-05-07T18:52:32.000Z TRACE [async_io::reactor] process_timers: 2 ready wakers
+2023-05-07T18:52:32.000Z TRACE [async_io::reactor] react: 2 ready wakers
+2023-05-07T18:52:32.000Z TRACE [async_io::driver] main_loop: waiting on I/O
+2023-05-07T18:52:32.000Z TRACE [async_io::reactor] process_timers: 0 ready wakers
+2023-05-07T18:52:32.000Z TRACE [polling] Poller::wait(_, None)
+2023-05-07T18:52:32.000Z TRACE [polling::kqueue] wait: kqueue_fd=9, timeout=None
+2023-05-07T18:52:32.000Z INFO  [test_app] do_something_1() done !
+2023-05-07T18:52:32.000Z INFO  [test_app] do_something_2() done !
+2023-05-07T18:52:32.000Z INFO  [test_app] end main() !
+```
