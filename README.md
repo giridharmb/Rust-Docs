@@ -4345,3 +4345,100 @@ Output
 2023-05-07T18:52:32.000Z INFO  [test_app] do_something_2() done !
 2023-05-07T18:52:32.000Z INFO  [test_app] end main() !
 ```
+
+#### Async With Concurrency
+
+```rust
+use async_std::task;
+use std::time::Duration;
+use futures::{join, select, StreamExt};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::pin_mut;
+use futures::try_join;
+use async_std;
+use log::log;
+use simple_logger::SimpleLogger;
+use rand::{thread_rng, Rng};
+
+#[tokio::main]
+async fn main() {
+    SimpleLogger::new().init().unwrap();
+
+    log::info!("starting main()...");
+
+    let jobs = 0..100;
+    let concurrency = 5;
+
+    _ = stream::iter(jobs).for_each_concurrent(concurrency, |job| async move {
+        let result = do_something(job).await.unwrap();
+        process_result(result).await;
+    }).await;
+
+    log::info!("end main() !");
+}
+
+async fn do_something(job: i64) -> Result<String, String>{
+    log::info!(">> do_something()");
+    let mut rng = thread_rng();
+    let sleep_ms: u64 = rng.gen_range(1000..5000);
+    // async_std::task::sleep(Duration::from_millis(sleep_ms)).await;
+    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+    log::info!("<< do_something_1() done !");
+    let my_data = format!("do_something:done:{}", sleep_ms);
+    Ok(my_data)
+}
+
+async fn process_result(data: String) {
+    log::info!("process_result -> {}", data);
+}
+```
+
+#### Fixed Sleep For Each ASYNC Function
+
+```rust
+use async_std::task;
+use std::time::Duration;
+use futures::{join, select, StreamExt};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::pin_mut;
+use futures::try_join;
+use async_std;
+use log::log;
+use simple_logger::SimpleLogger;
+use rand::{thread_rng, Rng};
+
+#[tokio::main]
+async fn main() {
+    SimpleLogger::new().init().unwrap();
+
+    log::info!("starting main()...");
+
+    let jobs = 0..100;
+    let concurrency = 7;
+
+    _ = stream::iter(jobs).for_each_concurrent(concurrency, |job| async move {
+        let result = do_something(job).await.unwrap();
+        process_result(result).await;
+    }).await;
+
+    log::info!("end main() !");
+}
+
+async fn do_something(job: i64) -> Result<String, String>{
+    log::info!(">> do_something()");
+    let mut rng = thread_rng();
+    let sleep_ms: u64 = 3000;
+    // let sleep_ms: u64 = rng.gen_range(1000..5000);
+    // async_std::task::sleep(Duration::from_millis(sleep_ms)).await;
+    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+    log::info!("<< do_something_1() done !");
+    let my_data = format!("do_something:done:{}", sleep_ms);
+    Ok(my_data)
+}
+
+async fn process_result(data: String) {
+    log::info!("process_result -> {}", data);
+}
+```
