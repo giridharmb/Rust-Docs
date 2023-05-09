@@ -4442,3 +4442,188 @@ async fn process_result(data: String) {
     log::info!("process_result -> {}", data);
 }
 ```
+
+#### Async With Concurrency & Collecting Results
+
+```rust
+use async_std::task;
+use std::time::Duration;
+
+use futures::{join, select, StreamExt};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::pin_mut;
+use futures::try_join;
+use async_std;
+use log::log;
+use simple_logger::SimpleLogger;
+use rand::{thread_rng, Rng};
+
+#[tokio::main]
+async fn main() {
+    SimpleLogger::new().init().unwrap();
+
+    log::info!("starting main()...");
+
+    let jobs = 0..33;
+    let concurrency = 4;
+
+    let results: Vec<String> = stream::iter(jobs).map(do_something).buffer_unordered(concurrency).collect().await;
+
+    log::info!("{:#?}", results);
+
+    log::info!("end main() !");
+}
+
+async fn do_something(job: i64) -> String {
+    log::info!(">> do_something()");
+    let mut rng = thread_rng();
+    let sleep_ms: u64 = rng.gen_range(1000..3000);
+    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+    log::info!("<< do_something_1() done !");
+    let my_data = format!("do_something:done:{}", sleep_ms);
+    log::info!("{}", &my_data);
+    my_data
+}
+```
+
+Output
+
+```bash
+2023-05-09T17:45:11.627Z INFO  [test_app] starting main()...
+2023-05-09T17:45:11.627Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:11.627Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:11.627Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:11.627Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:12.818Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:12.818Z INFO  [test_app] do_something:done:1189
+2023-05-09T17:45:12.818Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:13.357Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:13.357Z INFO  [test_app] do_something:done:1729
+2023-05-09T17:45:13.357Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:13.713Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:13.713Z INFO  [test_app] do_something:done:2085
+2023-05-09T17:45:13.713Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:14.310Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:14.310Z INFO  [test_app] do_something:done:2682
+2023-05-09T17:45:14.310Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:14.540Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:14.541Z INFO  [test_app] do_something:done:1719
+2023-05-09T17:45:14.541Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:14.711Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:14.711Z INFO  [test_app] do_something:done:1353
+2023-05-09T17:45:14.711Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:15.371Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:15.371Z INFO  [test_app] do_something:done:1656
+2023-05-09T17:45:15.371Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:15.881Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:15.882Z INFO  [test_app] do_something:done:1569
+2023-05-09T17:45:15.882Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:16.225Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:16.225Z INFO  [test_app] do_something:done:1512
+2023-05-09T17:45:16.225Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:16.239Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:16.239Z INFO  [test_app] do_something:done:1697
+2023-05-09T17:45:16.239Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:17.646Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:17.646Z INFO  [test_app] do_something:done:2273
+2023-05-09T17:45:17.646Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:18.004Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:18.004Z INFO  [test_app] do_something:done:2121
+2023-05-09T17:45:18.004Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:18.450Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:18.450Z INFO  [test_app] do_something:done:2209
+2023-05-09T17:45:18.450Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:18.552Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:18.552Z INFO  [test_app] do_something:done:2325
+2023-05-09T17:45:18.552Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:19.558Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:19.558Z INFO  [test_app] do_something:done:1909
+2023-05-09T17:45:19.558Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:20.234Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:20.234Z INFO  [test_app] do_something:done:1781
+2023-05-09T17:45:20.234Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:20.589Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:20.589Z INFO  [test_app] do_something:done:2036
+2023-05-09T17:45:20.589Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:20.824Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:20.824Z INFO  [test_app] do_something:done:2818
+2023-05-09T17:45:20.824Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:21.627Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:21.627Z INFO  [test_app] do_something:done:1035
+2023-05-09T17:45:21.627Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:22.034Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:22.034Z INFO  [test_app] do_something:done:2467
+2023-05-09T17:45:22.034Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:22.069Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:22.069Z INFO  [test_app] do_something:done:1833
+2023-05-09T17:45:22.069Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:22.997Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:22.997Z INFO  [test_app] do_something:done:1368
+2023-05-09T17:45:22.997Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:23.382Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:23.382Z INFO  [test_app] do_something:done:1312
+2023-05-09T17:45:23.382Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:23.510Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:23.510Z INFO  [test_app] do_something:done:2684
+2023-05-09T17:45:23.511Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:24.646Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:24.646Z INFO  [test_app] do_something:done:2610
+2023-05-09T17:45:24.646Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:25.834Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:25.834Z INFO  [test_app] do_something:done:2835
+2023-05-09T17:45:25.834Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:26.207Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:26.207Z INFO  [test_app] do_something:done:2823
+2023-05-09T17:45:26.207Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:26.249Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:26.249Z INFO  [test_app] do_something:done:1600
+2023-05-09T17:45:26.249Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:26.399Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:26.399Z INFO  [test_app] do_something:done:2885
+2023-05-09T17:45:26.399Z INFO  [test_app] >> do_something()
+2023-05-09T17:45:27.341Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:27.341Z INFO  [test_app] do_something:done:1091
+2023-05-09T17:45:27.593Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:27.593Z INFO  [test_app] do_something:done:1757
+2023-05-09T17:45:28.300Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:28.300Z INFO  [test_app] do_something:done:1899
+2023-05-09T17:45:29.153Z INFO  [test_app] << do_something_1() done !
+2023-05-09T17:45:29.153Z INFO  [test_app] do_something:done:2944
+2023-05-09T17:45:29.153Z INFO  [test_app] [
+    "do_something:done:1189",
+    "do_something:done:1729",
+    "do_something:done:2085",
+    "do_something:done:2682",
+    "do_something:done:1719",
+    "do_something:done:1353",
+    "do_something:done:1656",
+    "do_something:done:1569",
+    "do_something:done:1512",
+    "do_something:done:1697",
+    "do_something:done:2273",
+    "do_something:done:2121",
+    "do_something:done:2209",
+    "do_something:done:2325",
+    "do_something:done:1909",
+    "do_something:done:1781",
+    "do_something:done:2036",
+    "do_something:done:2818",
+    "do_something:done:1035",
+    "do_something:done:2467",
+    "do_something:done:1833",
+    "do_something:done:1368",
+    "do_something:done:1312",
+    "do_something:done:2684",
+    "do_something:done:2610",
+    "do_something:done:2835",
+    "do_something:done:2823",
+    "do_something:done:1600",
+    "do_something:done:2885",
+    "do_something:done:1091",
+    "do_something:done:1757",
+    "do_something:done:1899",
+    "do_something:done:2944",
+]
+2023-05-09T17:45:29.154Z INFO  [test_app] end main() !
+```
