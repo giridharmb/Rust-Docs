@@ -4480,7 +4480,7 @@ async fn do_something(job: i64) -> String {
     let mut rng = thread_rng();
     let sleep_ms: u64 = rng.gen_range(1000..3000);
     tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
-    log::info!("<< do_something_1() done !");
+    log::info!("<< do_something() done !");
     let my_data = format!("do_something:done:{}", sleep_ms);
     log::info!("{}", &my_data);
     my_data
