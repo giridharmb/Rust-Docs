@@ -4627,3 +4627,49 @@ Output
 ]
 2023-05-09T17:49:26.034Z INFO  [test_app] end main() !
 ```
+
+#### Stackdriver Logging
+
+`Cargo.toml`
+
+```toml
+stackdriver_logger = "0.8.2"
+log = "0.4.17"
+```
+
+```rust
+use async_std::task;
+use std::time::Duration;
+
+use futures::{join, select, StreamExt};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::pin_mut;
+use futures::try_join;
+use async_std;
+use rand::{thread_rng, Rng};
+use log::{error, info, trace, debug, warn};
+
+#[tokio::main]
+async fn main() {
+    stackdriver_logger::init_with_cargo!();
+    info!("starting main()...");
+    let jobs = 0..33;
+    let concurrency = 4;
+    let results: Vec<String> = stream::iter(jobs).map(do_something).buffer_unordered(concurrency).collect().await;
+    info!("{:#?}", results);
+    error!("this is a test error message");
+    info!("end main() !");
+}
+
+async fn do_something(job: i64) -> String {
+    info!(">> do_something()");
+    let mut rng = thread_rng();
+    let sleep_ms: u64 = rng.gen_range(1000..3000);
+    tokio::time::sleep(Duration::from_millis(sleep_ms)).await;
+    info!("<< do_something() done !");
+    let my_data = format!("do_something:done:{}", sleep_ms);
+    info!("{}", &my_data);
+    my_data
+}
+```
