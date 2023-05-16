@@ -4673,3 +4673,132 @@ async fn do_something(job: i64) -> String {
     my_data
 }
 ```
+
+#### `?` Operator
+
+As you may have noticed, Rust does not have exceptions. It has panics, but their use for error-handling is discouraged (they are meant for unrecoverable errors).
+
+In Rust, error handling uses Result. A typical example would be:
+
+```rust
+fn halves_if_even(i: i32) -> Result<i32, Error> {
+    if i % 2 == 0 {
+        Ok(i / 2)
+    } else {
+        Err(/* something */)
+    }
+}
+
+fn do_the_thing(i: i32) -> Result<i32, Error> {
+    let i = match halves_if_even(i) {
+        Ok(i) => i,
+        Err(e) => return Err(e),
+    };
+
+    // use `i`
+}
+```
+
+This is great because:
+
+ - when writing the code you cannot accidentally forget to deal with the error,
+ - when reading the code you can immediately see that there is a potential for error right here.
+
+ It's less than ideal, however, in that it is very verbose. This is where the question mark operator `?` comes in.
+
+ The above can be rewritten as:
+
+```rust
+fn do_the_thing(i: i32) -> Result<i32, Error> {
+    let i = halves_if_even(i)?;
+
+    // use `i`
+}
+```
+
+which is much more concise.
+
+What `?` does here is equivalent to the match statement above with an addition. In short:
+
+1. It unpacks the Result if OK
+
+2. It returns the error if not, calling From::from on the error value to potentially convert it to another type.
+
+3. It's a bit magic, but error handling needs some magic to cut down the boilerplate, and unlike exceptions it is immediately visible which function calls may or may not error out: those that are adorned with `?`
+
+One example of the magic is that this also works for `Option`:
+
+```rust
+// Assume
+// fn halves_if_even(i: i32) -> Option<i32>
+
+fn do_the_thing(i: i32) -> Option<i32> {
+    let i = halves_if_even(i)?;
+
+    // use `i`
+}
+```
+
+#### `?` Operator And Cascading Errors : Custom Error Type
+
+```rust
+#[derive(Debug)]
+enum MathError {
+    DivisionByZero,
+}
+
+#[derive(Debug)]
+struct CustomError {
+    err_type: MathError,
+    err_message: String,
+}
+
+
+fn div(x: f64, y: f64) -> Result<f64, CustomError> {
+    if y == 0.0 {
+        let custom_error = CustomError {
+            err_message: "cannot divide by zero".to_string(),
+            err_type: MathError::DivisionByZero,
+        };
+        return Err(custom_error);
+    } else {
+        Ok(x / y)
+    }
+}
+
+fn main() -> Result<(), CustomError> {
+    let result_1 = div(5.34 , 2.5336);
+    println!("result_1 : {:#?}", result_1);
+
+    let result_2 = div(5.34 , 2.5336)?;
+    println!("result_2 : {}", result_2);
+
+    //-----------------------------------------------------------
+
+    let result_3 = div(5.34, 0 as f64);
+    println!("result_3 : {:#?}", result_3);
+
+    let result_4 = div(5.34, 0 as f64)?;
+    println!("result_4 : {}", result_4);
+
+    //-----------------------------------------------------------
+
+    Ok(())
+}
+```
+
+Output
+
+```bash
+result_1 : Ok(
+    2.107672876539312,
+)
+result_2 : 2.107672876539312
+result_3 : Err(
+    CustomError {
+        err_type: DivisionByZero,
+        err_message: "cannot divide by zero",
+    },
+)
+Error: CustomError { err_type: DivisionByZero, err_message: "cannot divide by zero" }
+```
