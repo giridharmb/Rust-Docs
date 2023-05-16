@@ -4840,3 +4840,26 @@ fn main() {
     }
 }
 ```
+
+Output
+
+```bash
+A: I get executed every 5 seconds!
+A: I get executed every 5 seconds!
+B: I get executed every 10 seconds!
+C: I get executed every 15 seconds!
+A: I get executed every 5 seconds!
+A: I get executed every 5 seconds!
+B: I get executed every 10 seconds!
+A: I get executed every 5 seconds!
+C: I get executed every 15 seconds!
+A: I get executed every 5 seconds!
+B: I get executed every 10 seconds!
+A: I get executed every 5 seconds!
+A: I get executed every 5 seconds!
+B: I get executed every 10 seconds!
+C: I get executed every 15 seconds!
+...
+...
+...
+```
