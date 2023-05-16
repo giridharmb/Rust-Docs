@@ -4802,3 +4802,41 @@ result_3 : Err(
 )
 Error: CustomError { err_type: DivisionByZero, err_message: "cannot divide by zero" }
 ```
+
+#### Run Scheduled Jobs / Cron Job
+
+`Cargo.toml`
+
+```toml
+job_scheduler = "*"
+```
+
+`main.rs`
+
+```rust
+extern crate job_scheduler;
+use job_scheduler::{JobScheduler, Job};
+use std::time::Duration;
+
+fn main() {
+    let mut sched = JobScheduler::new();
+
+    sched.add(Job::new("1/5 * * * * *".parse().unwrap(), || {
+        println!("A: I get executed every 5 seconds!");
+    }));
+
+    sched.add(Job::new("1/10 * * * * *".parse().unwrap(), || {
+        println!("B: I get executed every 10 seconds!");
+    }));
+
+    sched.add(Job::new("1/15 * * * * *".parse().unwrap(), || {
+        println!("C: I get executed every 15 seconds!");
+    }));
+
+    loop {
+        sched.tick();
+
+        std::thread::sleep(Duration::from_millis(500));
+    }
+}
+```
