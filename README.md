@@ -4863,3 +4863,68 @@ C: I get executed every 15 seconds!
 ...
 ...
 ```
+
+#### Running Scheduled Cron Jobs Using Tokio Runtime
+
+```rust
+use tokio::time::interval;
+use log;
+
+async fn do_something_1(my_str: String) -> Result<(), String>{
+    println!(">> do_something_1() : {}",my_str);
+    // async_std::task::sleep(Duration::from_secs(3)).await;
+    println!("<< do_something_1() done !");
+    Ok(())
+}
+
+async fn do_something_2(my_str: String) -> Result<(), String>{
+    println!(">> do_something_2() : {}",my_str);
+    // async_std::task::sleep(Duration::from_secs(3)).await;
+    println!("<< do_something_2() done !");
+    Ok(())
+}
+
+#[tokio::main]
+async fn main()  {
+    // let mut interval = std::time::interval(std::time::Duration::from_secs(3));
+    let mut interval = interval(std::time::Duration::from_secs(3));
+
+    let mut counter = 1;
+
+    loop {
+        interval.tick().await;
+
+        tokio::spawn(async move {
+            let _data1 = do_something_1(counter.to_string()).await.unwrap();
+        });
+
+        tokio::spawn(async move {
+            let _data1 = do_something_2(counter.to_string()).await.unwrap();
+        });
+        counter = counter + 1;
+    }
+}
+```
+
+Output
+
+```bash
+>> do_something_1() : 1
+<< do_something_1() done !
+>> do_something_2() : 1
+<< do_something_2() done !
+>> do_something_1() : 2
+<< do_something_1() done !
+>> do_something_2() : 2
+<< do_something_2() done !
+>> do_something_1() : 3
+<< do_something_1() done !
+>> do_something_2() : 3
+<< do_something_2() done !
+>> do_something_1() : 4
+<< do_something_1() done !
+>> do_something_2() : 4
+<< do_something_2() done !
+...
+...
+```
