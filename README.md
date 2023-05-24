@@ -4963,6 +4963,7 @@ impl Screen {
 // that is, our Screen component can store buttons, sliders, text input fields etc.
 // But, it cannot store a mixture of the three different types.
 // that is, the list has to be homogenous
+
 // But, if you are only storing buttons or only text input fields,
 // then advantage with Generics (with Trait bounds) is that : there is no run time cost
 // However, if you want the flexibility to store any Type that implements a certain Trait,
