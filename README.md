@@ -4928,3 +4928,117 @@ Output
 ...
 ...
 ```
+
+#### Using Trait Objects in Rust & Dynamic Dispatch
+
+`lib.rs`
+
+```rust
+// ------ Using Trait Objects in Rust -------
+
+pub trait Draw {
+    fn draw(&self);
+}
+
+// list of draw'able components
+pub struct Screen {
+    // uses Box smart pointer
+    // A pointer type that uniquely owns a heap allocation of type T.
+    // contains any type , that implements the Draw trait
+    // components: it contains a Vector of Trait Objects
+    // dyn -> is Dynamic Dispatch
+    pub components: Vec< Box<dyn Draw> >,
+}
+
+impl Screen {
+    pub fn run(&self) {
+        for component in self.components.iter() {
+            component.draw();
+        }
+    }
+}
+
+// why not use Generics, instead of trait objects ?
+// when using generics, you are limited to one type
+// that is, our Screen component can store buttons, sliders, text input fields etc.
+// But, it cannot store a mixture of the three different types.
+// that is, the list has to be homogenous
+// But, if you are only storing buttons or only text input fields,
+// then advantage with Generics (with Trait bounds) is that : there is no run time cost
+// However, if you want the flexibility to store any Type that implements a certain Trait,
+// then using Trait objects makes more sense
+
+
+// (static dispatch) : when the compiler knows the concrete functions that you are calling
+// at compile time.
+// the opposite is (dynamic dispatch)
+// dynamic dispatch happens when the compiler does not know the concrete methods you are calling
+// at compile time, it figures that out at run time
+
+// when using trait objects, the rust compiler must use dynamic dispatch
+// which means there is a run time performance cost
+// however we get to write flexible code, which can accept any object,
+// which implements a certain trait
+
+pub struct Button {
+    pub width: u32,
+    pub height: u32,
+    pub label: String,
+}
+
+impl Draw for Button {
+    fn draw(&self) {
+        println!("this is the draw for Button...");
+    }
+}
+```
+
+`main.rs`
+
+```rust
+use test_app::{Draw, Screen, Button};
+
+struct SelectBox {
+    width: u32,
+    height: u32,
+    options: Vec<String>,
+}
+
+impl Draw for SelectBox {
+    fn draw(&self) {
+        println!("this is the draw for SelectBox...");
+    }
+}
+
+fn main() {
+
+    let my_select_box = Box::new(
+        SelectBox {
+            width: 100,
+            height: 100,
+            options: vec![
+                String::from("yes"),
+                String::from("no"),
+                String::from("may_be"),
+            ],
+        }
+    );
+
+    let my_button = Box::new(
+        Button {
+            width: 10,
+            height: 15,
+            label: "execute".to_string(),
+        }
+    );
+
+    let screen = Screen {
+        components: vec![
+            my_select_box,
+            my_button
+        ],
+    };
+
+    screen.run();
+}
+```
