@@ -5049,6 +5049,7 @@ fn main() {
 ```rust
 use chrono;
 
+
 fn main() {
     // returns DateTime<Local>
     println!("{:?}", chrono::offset::Local::now());
@@ -5056,12 +5057,18 @@ fn main() {
     // returns DateTime<Utc>
     // NOTE: Available on crate feature *clock* only.
     println!("{:?}", chrono::offset::Utc::now());
+    
+    let dt = chrono::Utc::now();
+    let timestamp: i64 = dt.timestamp();
+
+    println!("Current timestamp is {}", timestamp);
 }
 ```
 
 Output
 
 ```bash
-2023-05-25T19:27:53.628805032+00:00
-2023-05-25T19:27:53.628916545Z
+2023-05-25T19:52:48.729841750+00:00
+2023-05-25T19:52:48.729991974Z
+Current timestamp is 1685044368
 ```
