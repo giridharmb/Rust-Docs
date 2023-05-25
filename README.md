@@ -5072,3 +5072,57 @@ Output
 2023-05-25T19:52:48.729991974Z
 Current timestamp is 1685044368
 ```
+
+#### Convert a local time to another timezone
+
+```rust
+use chrono::{DateTime, FixedOffset, Local, Utc};
+
+fn main() {
+    let local_time = Local::now();
+    
+    let utc_time = DateTime::<Utc>::from_utc(local_time.naive_utc(), Utc);
+    
+    let china_timezone = FixedOffset::east(8 * 3600);
+    let rio_timezone = FixedOffset::west(2 * 3600);
+    
+    println!("Local time now is {}", local_time);
+    println!("UTC time now is {}", utc_time);
+    
+    println!("Time in Hong Kong now is {}", utc_time.with_timezone(&china_timezone));
+    println!("Time in Rio de Janeiro now is {}", utc_time.with_timezone(&rio_timezone));
+}
+```
+
+Output
+
+```bash
+Local time now is 2023-05-25 19:58:28.898108863 +00:00
+UTC time now is 2023-05-25 19:58:28.898108863 UTC
+Time in Hong Kong now is 2023-05-26 03:58:28.898108863 +08:00
+Time in Rio de Janeiro now is 2023-05-25 17:58:28.898108863 -02:00
+```
+
+#### Display formatted date and time
+
+```rust
+use chrono::{DateTime, Utc};
+
+fn main() {
+    let now: DateTime<Utc> = Utc::now();
+
+    println!("UTC now is: {}", now);
+    println!("UTC now in RFC 2822 is: {}", now.to_rfc2822());
+    println!("UTC now in RFC 3339 is: {}", now.to_rfc3339());
+    println!("UTC now in a custom format is: {}", now.format("%a %b %e %T %Y"));
+}
+```
+
+Output
+
+```bash
+UTC now is: 2023-05-25 20:03:11.742083840 UTC
+UTC now in RFC 2822 is: Thu, 25 May 2023 20:03:11 +0000
+UTC now in RFC 3339 is: 2023-05-25T20:03:11.742083840+00:00
+UTC now in a custom format is: Thu May 25 20:03:11 2023
+```
