@@ -5043,3 +5043,25 @@ fn main() {
     screen.run();
 }
 ```
+
+#### Date & Time
+
+```rust
+use chrono;
+
+fn main() {
+    // returns DateTime<Local>
+    println!("{:?}", chrono::offset::Local::now());
+
+    // returns DateTime<Utc>
+    // NOTE: Available on crate feature *clock* only.
+    println!("{:?}", chrono::offset::Utc::now());
+}
+```
+
+Output
+
+```bash
+2023-05-25T19:27:53.628805032+00:00
+2023-05-25T19:27:53.628916545Z
+```
