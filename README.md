@@ -5126,3 +5126,44 @@ UTC now in RFC 2822 is: Thu, 25 May 2023 20:03:11 +0000
 UTC now in RFC 3339 is: 2023-05-25T20:03:11.742083840+00:00
 UTC now in a custom format is: Thu May 25 20:03:11 2023
 ```
+
+#### Custom Logging
+
+```rust
+use log::{Record, Level, Metadata, LevelFilter, SetLoggerError};
+
+static CONSOLE_LOGGER: ConsoleLogger = ConsoleLogger;
+
+struct ConsoleLogger;
+
+impl log::Log for ConsoleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("Rust App : {} : {}", record.level(), record.args());
+        }
+    }
+    fn flush(&self) {}
+}
+
+fn main() -> Result<(), SetLoggerError> {
+    log::set_logger(&CONSOLE_LOGGER)?;
+    log::set_max_level(LevelFilter::Info);
+
+    log::info!("hello log");
+    log::warn!("warning");
+    log::error!("oops");
+    Ok(())
+}
+```
+
+Output
+
+```bash
+Rust App : INFO : hello log
+Rust App : WARN : warning
+Rust App : ERROR : oops
+```
