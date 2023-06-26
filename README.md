@@ -5167,3 +5167,353 @@ Rust App : INFO : hello log
 Rust App : WARN : warning
 Rust App : ERROR : oops
 ```
+
+#### ASYNC CONCURRENCY : Call async Functions In Parallel
+
+```rust
+use std::fmt::{format, Formatter};
+use tokio::time::sleep as tokio_sleep;
+use tokio::time::Duration as tokio_duration;
+use rand::{Rng, thread_rng};
+use uuid::Uuid;
+use std::time::{SystemTime, UNIX_EPOCH};
+use md5;
+use tokio;
+use std::{time};
+use futures::{join, select, StreamExt};
+use futures::future::FutureExt;
+use futures::stream;
+use futures::pin_mut;
+use futures::try_join;
+
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub struct InputData {
+    pub epoch_time: u64,
+    pub uuid_data: String,
+    pub id: i32,
+}
+
+#[tokio::main]
+async fn main() {
+    let results = perform_all_calculations().await;
+    println!("\nresults : \n\n{:#?}\n", results);
+}
+
+async fn perform_all_calculations() -> Vec<String> {
+    let now = time::Instant::now();
+    let input_vec = generate_input_data();
+    let input_vec_length = input_vec.len();
+    // at any given time, run these many async functions
+    let concurrency = 4;
+    let results: Vec<_> = stream::iter(input_vec).map(perform_calculation_for_input).buffer_unordered(concurrency).collect().await;
+    let elapsed = now.elapsed().as_secs_f64();
+    println!("perform_all_calculations() : total time taken : {}", elapsed);
+    results
+}
+
+// generate a vector of input data for computation
+fn generate_input_data() -> Vec<InputData> {
+    let mut input_data = vec![];
+    for i in 1..=16 {
+        let current_epoch = get_epoch_time();
+        let random_uuid = Uuid::new_v4();
+        let input = InputData {
+            epoch_time: current_epoch,
+            uuid_data: random_uuid.to_string(),
+            id: i,
+        };
+        input_data.push(input);
+    }
+    println!("generate_input_data() : input_data : \n{:#?}\n", input_data);
+    input_data
+}
+
+// for a given input of type (InputData), compute md5 hash
+async fn perform_calculation_for_input(input: InputData) -> String {
+
+    // first sleep for some random seconds (to simulate doing some job)
+    let random_number = get_random_number();
+
+    tokio_sleep(tokio_duration::from_secs_f64(random_number)).await;
+
+    // if epoch is 1234 and uuid is a0b1c2d3 , then input_str will be 1234_a0b1c2d3
+    let input_str = input.to_string();
+    // let input_str = get_input_data_as_string(input.clone());
+
+    // this will compute md5 of 1234_a0b1c2d3
+    let computed_md5 = get_md5(input_str);
+
+    // print the output
+    println!("perform_calculation_for_input() : input : {:#?} , \ncomputed_md5 : {}\n\n", input, computed_md5);
+
+    // return the computed md5 hash as a string
+    computed_md5
+}
+
+// helper function : get current epoch time
+fn get_epoch_time() -> u64 {
+    let now = SystemTime::now();
+    let since_the_epoch = now.duration_since(UNIX_EPOCH).unwrap();
+    since_the_epoch.as_secs()
+}
+
+// helper function : get md5 hash of a given input string
+fn get_md5(my_str: String) -> String {
+    let digest = md5::compute(my_str);
+    let computed_hash = format!("{:x}", digest);
+    computed_hash
+}
+
+// helper function : get InputData as a string
+impl std::fmt::Display for InputData {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}_{}", self.epoch_time, self.uuid_data)
+    }
+}
+
+// helper function : get InputData as a string
+fn get_random_number() -> f64 {
+    let mut rng = thread_rng();
+    let random_number = rng.gen_range(2..5);
+    random_number as f64
+}
+```
+
+Output
+
+```bash
+generate_input_data() : input_data :
+[
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "ea494cd5-4ba3-45e6-aaac-dd5d6471c654",
+        id: 1,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "2947b63d-5660-483c-859e-bb7084f3f561",
+        id: 2,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "fec80b3d-1310-43e0-9322-c898ebc49211",
+        id: 3,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "34905092-0f75-479d-bbef-4d9c381d7ae4",
+        id: 4,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "29528d21-44ca-48fa-a4ae-a1ad281a11f8",
+        id: 5,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "3c356d6e-a5bd-475d-abb0-8c64fa55c7e9",
+        id: 6,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "6054c1a6-84e1-4143-a210-d128fab80fc6",
+        id: 7,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "cda88a1b-1954-417e-89c8-6406651ead00",
+        id: 8,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "bf13270d-ac9a-4611-902d-9f7cec4783d9",
+        id: 9,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "84c4cd51-756d-4442-948b-367be372692d",
+        id: 10,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "bd00d879-a1a6-4780-9121-04a33078eb63",
+        id: 11,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "95de9f48-3432-4959-bcf0-cb8c7852b512",
+        id: 12,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "c9051b6d-f391-4bf2-b5fa-fe52d7a5899e",
+        id: 13,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "d19db842-f5e8-46fa-8cd7-b860141609a6",
+        id: 14,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "75e35aba-0859-43fd-8584-60b672123a40",
+        id: 15,
+    },
+    InputData {
+        epoch_time: 1687793303,
+        uuid_data: "64e6a01e-3081-4103-9546-a1a7aacbc4a4",
+        id: 16,
+    },
+]
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "2947b63d-5660-483c-859e-bb7084f3f561",
+    id: 2,
+} ,
+computed_md5 : a25bd0a4e3556a10643ec7e539a50d8e
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "fec80b3d-1310-43e0-9322-c898ebc49211",
+    id: 3,
+} ,
+computed_md5 : 1691c160f304bd8f577d7913e149b503
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "ea494cd5-4ba3-45e6-aaac-dd5d6471c654",
+    id: 1,
+} ,
+computed_md5 : d32f86c1ba9f96ee1922cb454a820096
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "34905092-0f75-479d-bbef-4d9c381d7ae4",
+    id: 4,
+} ,
+computed_md5 : 8c98192db810ac81265e9d8f048d8196
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "29528d21-44ca-48fa-a4ae-a1ad281a11f8",
+    id: 5,
+} ,
+computed_md5 : e4191d9a662666d69d12a4958a291512
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "6054c1a6-84e1-4143-a210-d128fab80fc6",
+    id: 7,
+} ,
+computed_md5 : 441e0e0092dcdc9ba10c3af177568c29
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "cda88a1b-1954-417e-89c8-6406651ead00",
+    id: 8,
+} ,
+computed_md5 : a540bd2b78e7622ce7a9faef6f511150
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "3c356d6e-a5bd-475d-abb0-8c64fa55c7e9",
+    id: 6,
+} ,
+computed_md5 : 6dbadc3f67ebf8389ccc36b2240c5757
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "95de9f48-3432-4959-bcf0-cb8c7852b512",
+    id: 12,
+} ,
+computed_md5 : 5c7571c5b0697c6efbebe5c2ab53347b
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "bf13270d-ac9a-4611-902d-9f7cec4783d9",
+    id: 9,
+} ,
+computed_md5 : 5c778008f9a4c1ac75a319ead6964c5e
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "84c4cd51-756d-4442-948b-367be372692d",
+    id: 10,
+} ,
+computed_md5 : 4881a2c5f8ec5e1133a25b24f1a7b616
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "bd00d879-a1a6-4780-9121-04a33078eb63",
+    id: 11,
+} ,
+computed_md5 : 5cc736a4ffe3b667522b74fbb177bbdc
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "c9051b6d-f391-4bf2-b5fa-fe52d7a5899e",
+    id: 13,
+} ,
+computed_md5 : f83567244f8f660cdbb80d2ac5d40386
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "d19db842-f5e8-46fa-8cd7-b860141609a6",
+    id: 14,
+} ,
+computed_md5 : 96886f3ec45661de862b06f06f3dfb4e
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "64e6a01e-3081-4103-9546-a1a7aacbc4a4",
+    id: 16,
+} ,
+computed_md5 : f7e163dd471411b9790b97f0c6d3edf2
+
+
+perform_calculation_for_input() : input : InputData {
+    epoch_time: 1687793303,
+    uuid_data: "75e35aba-0859-43fd-8584-60b672123a40",
+    id: 15,
+} ,
+computed_md5 : ae7f2ed779b1b99fbc5cbfc9aac2b00f
+
+
+perform_all_calculations() : total time taken : 14.011009708
+
+results :
+
+[
+    "a25bd0a4e3556a10643ec7e539a50d8e",
+    "1691c160f304bd8f577d7913e149b503",
+    "d32f86c1ba9f96ee1922cb454a820096",
+    "8c98192db810ac81265e9d8f048d8196",
+    "e4191d9a662666d69d12a4958a291512",
+    "441e0e0092dcdc9ba10c3af177568c29",
+    "a540bd2b78e7622ce7a9faef6f511150",
+    "6dbadc3f67ebf8389ccc36b2240c5757",
+    "5c7571c5b0697c6efbebe5c2ab53347b",
+    "5c778008f9a4c1ac75a319ead6964c5e",
+    "4881a2c5f8ec5e1133a25b24f1a7b616",
+    "5cc736a4ffe3b667522b74fbb177bbdc",
+    "f83567244f8f660cdbb80d2ac5d40386",
+    "96886f3ec45661de862b06f06f3dfb4e",
+    "f7e163dd471411b9790b97f0c6d3edf2",
+    "ae7f2ed779b1b99fbc5cbfc9aac2b00f",
+]
+```
