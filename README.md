@@ -5291,7 +5291,7 @@ impl std::fmt::Display for InputData {
     }
 }
 
-// helper function : get InputData as a string
+// helper function : get random number
 fn get_random_number() -> f64 {
     let mut rng = thread_rng();
     let random_number = rng.gen_range(2..5);
