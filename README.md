@@ -5170,6 +5170,26 @@ Rust App : ERROR : oops
 
 #### ASYNC CONCURRENCY : Call async Functions In Parallel
 
+`Cargo.toml`
+
+```toml
+[package]
+name = "async-concurrency"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.23.0", features = ["full"] }
+rand = "0.8.5"
+md5 = "0.7.0"
+futures = "0.3.4" # for our async / await blocks
+uuid = { version = "1.3.0", features = ["v4", "fast-rng", "macro-diagnostics"] }
+```
+
+`src/main.rs`
+
 ```rust
 use std::fmt::{format, Formatter};
 use tokio::time::sleep as tokio_sleep;
