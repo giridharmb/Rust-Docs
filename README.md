@@ -12,7 +12,7 @@ Please have a look the following file for code snippets/samples
 
 #### [Cloud : OpenStack | Azure | GCP](https://github.com/giridharmb/rust-app1/blob/master/CLOUD.md)
 
-### [File Uploader : Server And Client](https://github.com/giridharmb/rust-app1/blob/master/FileUploader.md)
+#### [File Uploader : Server And Client](https://github.com/giridharmb/rust-app1/blob/master/FileUploader.md)
 
 
 How To Create A New Cargo Project (Executable App) ?
