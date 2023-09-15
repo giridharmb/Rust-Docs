@@ -5539,3 +5539,122 @@ results :
     "ae7f2ed779b1b99fbc5cbfc9aac2b00f",
 ]
 ```
+
+#### Async Functions And Channels
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "async-channels"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.29.1", features = ["full"] }
+```
+
+`src/main.rs`
+
+```rust
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
+async fn producer(tx: mpsc::Sender<i32>) {
+    for i in 0..25 {
+        sleep(Duration::from_millis(200)).await;
+        let send_result = match tx.send(i).await {
+            Ok(d) => {
+                println!("tx.send successful");
+            }
+            Err(e) => {
+                println!("tx.send failed : {:#?}", e);
+            }
+        };
+    }
+}
+
+async fn consumer(mut rx: mpsc::Receiver<i32>) {
+    while let Some(data) = rx.recv().await {
+        println!("consumer : rx.recv : data : {:#}", data);
+    }
+}
+
+#[tokio::main]
+async fn main() {
+
+    let (tx, rx) = mpsc::channel(1);
+
+    let producer_handler = tokio::spawn(async move {
+        producer(tx).await;
+    });
+
+    let consumer_handler = tokio::spawn(async move {
+        consumer(rx).await;
+    });
+
+    let _ = tokio::try_join!(producer_handler, consumer_handler);
+}
+```
+
+```bash
+cargo build --release
+```
+
+Output
+
+```bash
+target/release/async-channels
+
+tx.send successful
+consumer : rx.recv : data : 0
+tx.send successful
+consumer : rx.recv : data : 1
+tx.send successful
+consumer : rx.recv : data : 2
+tx.send successful
+consumer : rx.recv : data : 3
+tx.send successful
+consumer : rx.recv : data : 4
+tx.send successful
+consumer : rx.recv : data : 5
+tx.send successful
+consumer : rx.recv : data : 6
+tx.send successful
+consumer : rx.recv : data : 7
+tx.send successful
+consumer : rx.recv : data : 8
+tx.send successful
+consumer : rx.recv : data : 9
+tx.send successful
+consumer : rx.recv : data : 10
+tx.send successful
+consumer : rx.recv : data : 11
+tx.send successful
+consumer : rx.recv : data : 12
+tx.send successful
+consumer : rx.recv : data : 13
+tx.send successful
+consumer : rx.recv : data : 14
+tx.send successful
+consumer : rx.recv : data : 15
+tx.send successful
+consumer : rx.recv : data : 16
+tx.send successful
+consumer : rx.recv : data : 17
+tx.send successful
+consumer : rx.recv : data : 18
+tx.send successful
+consumer : rx.recv : data : 19
+tx.send successful
+consumer : rx.recv : data : 20
+tx.send successful
+consumer : rx.recv : data : 21
+tx.send successful
+consumer : rx.recv : data : 22
+tx.send successful
+consumer : rx.recv : data : 23
+tx.send successful
+consumer : rx.recv : data : 24
+```
