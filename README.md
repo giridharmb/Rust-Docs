@@ -5664,6 +5664,74 @@ consumer : rx.recv : data : 24
 
 #### [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
 
+Ganerally speaking, every openstack region, will have its own
+- region name
+- openstack credentials
+- rabbitmq credentials
+- http endpoint
+
+
+```rust
+#[derive(Debug, Deserialize)]
+pub struct OpenstackRegionConfig {
+    pub region_name: String,
+    pub openstack_user: String,
+    pub openstack_pass: String,
+    pub http_endpoint: String,
+    pub rabbitmq_user: String,
+    pub rabbitmq_pass: String,
+}
+```
+
+```rust
+pub async fn get_workspace_data() -> Vec<OpenstackRegionConfig> {
+    /*
+        openstack_configuration.yaml:
+
+        ---
+          - region_name: "region-001"
+            openstack_user: "my_user_1"
+            openstack_pass: "some_thing_xyz_1"
+            http_endpoint: "region-001-endpoint.prod.company.com"
+            rabbitmq_user: "r_user_1"
+            rabbitmq_pass: "some_thing_p_001"
+          - region_name: "cdc-002"
+            openstack_user: "my_user_2"
+            openstack_pass: "some_thing_xyz_2"
+            http_endpoint: "region-002-endpoint.prod.company.com"
+            rabbitmq_user: "r_user_2"
+            rabbitmq_pass: "some_thing_p_002"
+    */
+
+    // Open the YAML file
+    let mut file = File::open("openstack_configuration.yaml").unwrap();
+    let mut contents = String::new();
+
+    // Read the file content
+    file.read_to_string(&mut contents).unwrap();
+
+    // Deserialize YAML into a Vec<User>
+    let os_items: Vec<OpenstackRegionConfig> = serde_yaml::from_str(&contents).unwrap();
+    os_items
+}
+```
+
+```rust
+pub async fn get_openstack_endpoints() -> Vec<String> {
+    let mut endpoints:Vec<String> = vec![];
+
+    let openstack_config = get_workspace_data().await;
+
+    for region_config in openstack_config {
+        endpoints.push(region_config.http_endpoint);
+    }
+
+    println!("openstack_http_endpoints : {:#?}", endpoints);
+
+    endpoints
+}
+```
+
 ```rust
 use std::time;
 use reqwest;
@@ -5774,6 +5842,12 @@ pub async fn get_os_hypervisors_token_for_all_regions() -> Vec<Vec<Value>> {
 `main.rs`
 
 ```rust
+
+use std::future::Future;
+use serde::{Serialize, Deserialize};
+use serde_json::{json, Value};
+use std::{thread, time};
+
 let all_hypervisors = os_hypervisor::get_os_hypervisors_token_for_all_regions().await;
 
 let total_hypervisors: usize = all_hypervisors.iter().map(|inner_vec| inner_vec.len()).sum();
