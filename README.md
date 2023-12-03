@@ -14,8 +14,9 @@ Please have a look the following file for code snippets/samples
 
 #### [File Uploader : Server And Client](https://github.com/giridharmb/rust-app1/blob/master/FileUploader.md)
 
-#### [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
+[Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
 
+<hr/>
 
 How To Create A New Cargo Project (Executable App) ?
 
