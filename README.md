@@ -14,6 +14,8 @@ Please have a look the following file for code snippets/samples
 
 #### [File Uploader : Server And Client](https://github.com/giridharmb/rust-app1/blob/master/FileUploader.md)
 
+#### [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
+
 
 How To Create A New Cargo Project (Executable App) ?
 
@@ -5657,4 +5659,123 @@ tx.send successful
 consumer : rx.recv : data : 23
 tx.send successful
 consumer : rx.recv : data : 24
+```
+
+#### [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
+
+```rust
+use std::time;
+use reqwest;
+use serde_json::{Value};
+use crate::{app_error, os_keystone};
+use tokio::time::Duration;
+use tokio::time::{sleep};
+use tokio;
+use futures::stream;
+use futures::{join, select, StreamExt};
+
+pub const MAX_RETRIES: u32 = 10;
+
+pub async fn get_os_hypervisors(http_endpoint: &str) -> Result<Vec<Value>, app_error::CustomError> {
+    let client = reqwest::Client::new();
+
+    let keystone_token = match os_keystone::get_token_with_retry(http_endpoint).await {
+        None => {
+            let custom_err = app_error::CustomError{
+                err_msg: String::from("os_hypervisors : Could Not Make HTTP Get Keystone Token"),
+                err_type: app_error::GenericError::HypervisorQueryFailed
+            };
+            return Err(custom_err)
+        },
+        Some(d) => {
+            d
+        },
+    };
+
+    let my_url = format!("https://{}:8774/v2.1/os-hypervisors", http_endpoint);
+
+    let mut hypervisors = vec![];
+
+    let response = match client.get(my_url)
+        .header("X-Auth-Token", keystone_token)
+        .header("accept", "application/json")
+        .send()
+        .await {
+        Ok(d) => {
+            let response: serde_json::Value = d.json().await.unwrap();
+            // println!("{:#?}", response);
+            if let Some(my_items) = response.get("hypervisors").and_then(Value::as_array) {
+                hypervisors = my_items.to_vec();
+            }
+        },
+        Err(e) => {
+            let custom_err = app_error::CustomError{
+                err_msg: String::from("os_hypervisors : Could Not Make HTTP Get Request To Fetch Hypervisor List"),
+                err_type: app_error::GenericError::TenantQueryFailed
+            };
+            return Err(custom_err)
+        },
+    };
+    Ok(hypervisors)
+}
+
+pub(crate) async fn get_os_hypervisors_with_retry(http_endpoint: &str) -> Vec<Value> {
+    let mut backoff: u64 = 1;
+    let mut retries = 20;
+
+    let mut my_list: Vec<Value> = vec![];
+    loop {
+        match get_os_hypervisors(&http_endpoint).await {
+            Ok(d) => {
+                my_list = d;
+                break;
+            }
+            Err(e) => {
+                println!("_REQUEST_FAILED (OS_HYPERVISORS) : {:#?}", e);
+                retries += 1;
+
+                if retries > MAX_RETRIES {
+                    println!("_MAX_RETRIES_REACHED (OS_HYPERVISORS) , EXITING...");
+                    break;
+                }
+
+                println!("_RETRYING (OS_HYPERVISORS) IN {} SECOND(S)...", backoff);
+                sleep(Duration::from_secs(backoff)).await;
+
+                // Exponential backoff
+                backoff *= 2;
+            }
+        }
+    }
+    my_list
+}
+
+pub async fn get_os_hypervisors_token_for_all_regions() -> Vec<Vec<Value>> {
+    let now = time::Instant::now();
+    let input_vec = os_keystone::get_openstack_endpoints().await;
+    let input_data: Vec<&str> = input_vec.iter().map(|d| d.as_str()).collect();
+    let input_vec_length = input_data.len();
+    let concurrency = 50;
+    let results: Vec<_> = stream::iter(input_data)
+        .map(get_os_hypervisors_with_retry)
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+    let elapsed = now.elapsed().as_secs_f64();
+    println!(
+        "get_os_hypervisors_token_for_all_regions() : total time taken : {}",
+        elapsed
+    );
+    results
+}
+```
+
+`main.rs`
+
+```rust
+let all_hypervisors = os_hypervisor::get_os_hypervisors_token_for_all_regions().await;
+
+let total_hypervisors: usize = all_hypervisors.iter().map(|inner_vec| inner_vec.len()).sum();
+
+println!("total_hypervisors : {}", total_hypervisors);
 ```
