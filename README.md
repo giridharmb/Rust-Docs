@@ -16,6 +16,8 @@ Please have a look the following file for code snippets/samples
 
 [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
 
+[Actix REST API With PostgreSQL Backend](#actix-rest-api-with-postgresql-backend)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -5853,4 +5855,423 @@ let all_hypervisors = os_hypervisor::get_os_hypervisors_token_for_all_regions().
 let total_hypervisors: usize = all_hypervisors.iter().map(|inner_vec| inner_vec.len()).sum();
 
 println!("total_hypervisors : {}", total_hypervisors);
+```
+
+#### [Actix REST API With PostgreSQL Backend](#actix-rest-api-with-postgresql-backend)
+
+FYI : This has some imports that are not needed. Please ignore those.
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "fastapi"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+actix-web = "4.3.0"
+serde_json = "1.0.93"
+serde = { version = "1.0.2" , features = ["derive"] }
+reqwest = { version = "0.11.18" , features = ["json"] }
+serde_yaml = "0.9.25"
+serde_derive = "1.0.176"
+tokio = { version = "1.29.1", features = ["full"] }
+futures = "0.3.28"
+lazy_static = "1.4.0"
+sqlx = { version = "0.7.3", features = ["postgres"]}
+dotenv = "0.15.0"
+tokio-postgres = {version = "0.7.10", features = ["with-uuid-0_8", "with-serde_json-1"] }
+database = "0.5.0"
+apps = "0.2.2"
+emoji-logger = "0.1.0"
+deadpool-postgres = "0.11.0"
+postgres-openssl = "0.5.0"
+openssl = "0.10.60"
+config = "0.13.4"
+uuid = { version = "0.8.2" , features = ["serde"]}
+derive_more = { version = "0.99.17", features = [] }
+```
+
+Environment File `app.rust.env`
+
+```ini
+DATABASE_URL=postgres://<USERNAME>:<PASSWORD>@<HOSTNAME>/<DBNAME>
+PG.USER=<USERNAME>
+PG.PASSWORD=<PASSWORD>
+PG.HOST=<HOSTNAME>
+PG.PORT=5432
+PG.DBNAME=<DBNAME>
+PG.POOL.MAX_SIZE=16
+RUST_LOG=actix_web=info
+```
+
+Please read the documentation put inside the `main.rs`
+
+`src/main.rs`
+
+```rust
+use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+use std::env;
+use tokio_postgres::{Error, row};
+use tokio_postgres::NoTls;
+use actix_web::{get, post, web, web::Data, App, HttpResponse, HttpServer};
+use actix_web::{Responder, HttpRequest, http, middleware, middleware::Logger, ResponseError};
+use futures::future;
+use futures::Future;
+use uuid::Uuid;
+use deadpool_postgres::{Config, Client, Pool};
+use openssl::ssl::{SslConnector, SslMethod};
+use postgres_openssl::*;
+use tokio::runtime::Runtime;
+use ::config::ConfigError;
+use dotenv::dotenv;
+use tokio_postgres::tls::MakeTlsConnect;
+use derive_more::{Display,From};
+use tokio_postgres::types::Json;
+
+extern crate emoji_logger;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Data1 {
+    // Define your data structure
+    random_num: i32,
+    random_float: f64,
+    md5: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Data2 {
+    id: Uuid,
+    name: String,
+    special_code: String
+}
+
+#[derive(Deserialize)]
+struct QueryParams {
+    key: String,
+    value: String,
+}
+
+#[derive(Display, From, Debug)]
+enum CustomError {
+    DatabaseError,
+    InvalidData,
+}
+
+impl std::error::Error for CustomError {}
+
+impl ResponseError for CustomError {
+    fn error_response(&self) -> HttpResponse {
+        match *self {
+            CustomError::DatabaseError => HttpResponse::InternalServerError().finish(),
+            CustomError::InvalidData => HttpResponse::BadRequest().finish(),
+        }
+    }
+}
+
+/*
+
+Initial Setup
+
+Make sure to create ENV file (app.rust.env)
+
+DATABASE_URL=postgres://<USERNAME>:<PASSWORD>@<HOSTNAME>/<DBNAME>
+PG.USER=<USERNAME>
+PG.PASSWORD=<PASSWORD>
+PG.HOST=<HOSTNAME>
+PG.PORT=5432
+PG.DBNAME=<DBNAME>
+PG.POOL.MAX_SIZE=16
+RUST_LOG=actix_web=info
+*/
+
+/*
+Operations for [ table1 ]
+
+Step-1: Manually Create Table >>
+
+Column-1 : random_num (integer)
+Column-2 : random_float (floating point number)
+Column-3 : md5 (text/string)
+
+CREATE TABLE IF NOT EXISTS table1(
+   random_num INT NOT NULL,
+   random_float DOUBLE PRECISION NOT NULL,
+   md5 TEXT NOT NULL
+);
+
+Confirm On DB >>
+
+# \d table1
+                      Table "public.table1"
+    Column    |       Type       | Collation | Nullable | Default
+--------------+------------------+-----------+----------+---------
+ random_num   | integer          |           | not null |
+ random_float | double precision |           | not null |
+ md5          | text             |           | not null |
+
+Step-2: Manually Insert Records through SQL Query & Verify
+
+INSERT INTO table1 (random_num, random_float, md5)
+    SELECT
+    floor(random()* (999-100 + 1) + 100),
+    random(),
+    md5(random()::text)
+ from generate_series(1,100);
+
+
+# select * from table1 limit 3;
+
+ random_num |    random_float    |               md5
+------------+--------------------+----------------------------------
+        178 | 0.4448593893793138 | b0b71cf1f224cbcea917928eee6f9fd9
+        884 | 0.9987171714499112 | 8509ec06ce85f98506f3987ef5ce6db9
+        227 | 0.5995229322453817 | 107f165cd7db33830d3967d9fb9cfc04
+(3 rows)
+
+Step-3: Query Via HTTP GET Request >>
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" http://localhost:8080/fetch_1 2>/dev/null | python -m json.tool
+[
+    {
+        "random_num": 178,
+        "random_float": 0.4448593893793138,
+        "md5": "b0b71cf1f224cbcea917928eee6f9fd9"
+    },
+    {
+        "random_num": 884,
+        "random_float": 0.9987171714499112,
+        "md5": "8509ec06ce85f98506f3987ef5ce6db9"
+    },
+    ...
+    ...
+    ...
+    {
+        "random_num": 160,
+        "random_float": 0.24041538274591545,
+        "md5": "ffafdc06f49c26daaf9989631f8e8de3"
+    }
+]
+
+*/
+
+/*
+
+Operations for [ table2 ]
+
+Step-1: Manually Create Table through SQL Query
+
+Column-1 : id (uuid) -> primary key
+Column-2 : json_data (jsonb) , example of data in this column : {"id": "<Random-UUID>", "name": "<SOME_STRING>", "specialCode": "<SOME_NUMBER>"}
+
+CREATE TABLE IF NOT EXISTS public.table2 (
+    id uuid NOT NULL,
+    json_data jsonb NOT NULL,
+    CONSTRAINT my_pk2 PRIMARY KEY (id)
+);
+
+Confirm On DB:
+
+#\d public.table2
+               Table "public.table2"
+  Column   | Type  | Collation | Nullable | Default
+-----------+-------+-----------+----------+---------
+ id        | uuid  |           | not null |
+ json_data | jsonb |           | not null |
+Indexes:
+    "my_pk2" PRIMARY KEY, btree (id)
+
+Step-2: Insert Some Records via HTTP POST
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name":"test", "specialCode": "1000"}'
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name":"test2", "specialCode": "2000"}'
+
+Step-5: Connect to Database, Verify With SQL Query
+
+# select * from public.table2;
+                  id                  |                                       json_data
+--------------------------------------+----------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc61 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name": "test2", "specialCode": "2000"}
+(2 rows)
+
+Step-6: Verify/Fetch Records Through HTTP GET API
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" http://localhost:8080/fetch_2 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    },
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61",
+        "name": "test2",
+        "specialCode": "2000"
+    }
+]
+
+*/
+
+
+/*
+    Make sure you populate the (app.rust.env) file
+*/
+
+async fn make_db_pool() -> Pool {
+    dotenv().ok();
+    dotenv::from_filename("app.rust.env").ok();
+
+    let mut cfg = Config::new();
+    cfg.host = Option::from(env::var("PG.HOST").unwrap());
+    cfg.user = Option::from(env::var("PG.USER").unwrap());
+    cfg.password = Option::from(env::var("PG.PASSWORD").unwrap());
+    cfg.dbname = Option::from(env::var("PG.DBNAME").unwrap());
+    let pool: Pool = cfg.create_pool(None, tokio_postgres::NoTls).unwrap();
+    pool
+}
+
+
+async fn insert_2(client: &Client, sample: &Data2) -> Result<u64, tokio_postgres::Error> {
+    client
+        .execute(
+            "INSERT INTO public.table2 (id, json_data) VALUES ($1, $2)",
+            &[&sample.id, &Json(&sample)],
+        )
+        .await
+}
+
+async fn get_data_1(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    let rows = client.query("SELECT * from table1", &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data1> = Vec::new();
+
+    for row in rows {
+        let random_num: i32  = row.get("random_num");
+        let random_float: f64  = row.get("random_float");
+        let md5: String  = row.get("md5");
+
+        let my_struct = Data1 {
+            random_num,
+            random_float,
+            md5,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+
+async fn get_data_2(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    let rows = client.query("SELECT json_data from public.table2", &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data2> = Vec::new();
+
+    for row in rows {
+        let json_data: Json<Data2> = row.get("json_data");
+        println!("{:#?}", json_data);
+        let my_struct = Data2 {
+          id: json_data.0.id,
+          special_code: json_data.0.special_code,
+          name: json_data.0.name,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+/*
+This function will receive data via POST Request
+Example:
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name":"test", "specialCode": "1000"}'
+*/
+async fn receive_data(record: web::Json<Data2>, db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError> {
+    let client: Client = db_pool
+        .get()
+        .await
+        .map_err(|_| CustomError::DatabaseError)?;
+
+    insert_2(&client, &record)
+        .await
+        .map_err(|_| CustomError::InvalidData)?;
+
+    Ok(HttpResponse::Ok().body(record.id.to_hyphenated().to_string()))
+}
+
+async fn get_connection(db_pool: Data<Pool>) -> Result<Client, String> {
+    db_pool.get().await.map_err(|err| err.to_string())
+}
+
+#[get("/api/health")]
+async fn hello_world() -> impl Responder {
+    HttpResponse::Ok().body("hi! 👋")
+}
+
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+
+    dotenv::from_filename("app.rust.env").ok();
+
+    println!("🧑‍🔬 Sample Service Starting");
+
+    let pool = make_db_pool().await;
+
+    std::env::set_var("RUST_LOG", "actix_web=debug");
+    emoji_logger::init();
+
+    let result = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .app_data(Data::new(pool.clone()))
+            .service(hello_world)
+            .route("data", web::post().to(receive_data))
+            .route("fetch_2", web::get().to(get_data_2))
+            .route("fetch_1", web::get().to(get_data_1))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await;
+
+    println!("🧑‍🔬 Sample Service Stopping");
+
+    result
+}
 ```
