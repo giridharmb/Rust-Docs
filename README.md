@@ -5908,7 +5908,12 @@ PG.POOL.MAX_SIZE=16
 RUST_LOG=actix_web=info
 ```
 
-Please read the documentation put inside the `main.rs`
+Please read the documentation put inside the `main.rs`, it has >
+- SQL Queries
+- CURL Requests (HTTP API)
+- Outputs
+- Verifications
+
 
 `src/main.rs`
 
@@ -5954,23 +5959,23 @@ pub struct Data2 {
 
 #[derive(Deserialize)]
 struct QueryParams {
-    key: String,
-    value: String,
+    string_match: String, // 'like' or 'exact'
+    search_string: String, // 'xyz' or '123-xyz' > basically any search string
 }
 
 #[derive(Display, From, Debug)]
 enum CustomError {
     DatabaseError,
     InvalidData,
+    QueryError,
 }
-
 impl std::error::Error for CustomError {}
-
 impl ResponseError for CustomError {
     fn error_response(&self) -> HttpResponse {
         match *self {
             CustomError::DatabaseError => HttpResponse::InternalServerError().finish(),
             CustomError::InvalidData => HttpResponse::BadRequest().finish(),
+            CustomError::QueryError => HttpResponse::BadRequest().finish(),
         }
     }
 }
@@ -6099,6 +6104,11 @@ curl -X POST http://localhost:8080/data \
 -H "content-type: application/json" \
 -d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name":"test2", "specialCode": "2000"}'
 
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name":"test2", "specialCode": "3000"}'
+
 Step-5: Connect to Database, Verify With SQL Query
 
 # select * from public.table2;
@@ -6106,7 +6116,8 @@ Step-5: Connect to Database, Verify With SQL Query
 --------------------------------------+----------------------------------------------------------------------------------------
  82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
  82115a42-3b60-4adf-b7c8-6a5afe73bc61 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name": "test2", "specialCode": "2000"}
-(2 rows)
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc62 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name": "test2", "specialCode": "3000"}
+(3 rows)
 
 Step-6: Verify/Fetch Records Through HTTP GET API
 
@@ -6121,6 +6132,11 @@ curl -X GET -H "accept: application/json" -H "content-type: application/json" ht
         "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61",
         "name": "test2",
         "specialCode": "2000"
+    },
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62",
+        "name": "test2",
+        "specialCode": "3000"
     }
 ]
 
@@ -6128,9 +6144,8 @@ curl -X GET -H "accept: application/json" -H "content-type: application/json" ht
 
 
 /*
-    Make sure you populate the (app.rust.env) file
+    Make sure you populate the (rust.app.env) file
 */
-
 async fn make_db_pool() -> Pool {
     dotenv().ok();
     dotenv::from_filename("app.rust.env").ok();
@@ -6214,9 +6229,124 @@ async fn get_data_2(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomErro
 }
 
 /*
+
+PostgreSQL Query For Query JSON Fields:
+
+hcm_galaxy2=# select * from table2;
+                  id                  |                                       json_data
+--------------------------------------+----------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc61 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name": "test2", "specialCode": "2000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc62 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name": "test2", "specialCode": "3000"}
+(3 rows)
+
+hcm_galaxy2=# select * from table2 where json_data->>'id' = '82115a42-3b60-4adf-b7c8-6a5afe73bc60';
+                  id                  |                                       json_data
+--------------------------------------+---------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+(1 row)
+
+hcm_galaxy2=# select * from table2 where json_data->>'id' like '%6a5afe73bc60%';
+                  id                  |                                       json_data
+--------------------------------------+---------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+(1 row)
+
+*/
+
+/*
+
+Sample Outputs For Below Function : get_data_with_query_2(...) >>
+
+Pattern Match (string_match=like)
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" "http://localhost:8080/fetch_with_query_2?string_match=like&search_string=6a5afe73bc60" 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    }
+]
+
+Exact Match (string_match=exact)
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" "http://localhost:8080/fetch_with_query_2?string_match=exact&search_string=82115a42-3b60-4adf-b7c8-6a5afe73bc60" 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    }
+]
+
+*/
+async fn get_data_with_query_2(db_pool: web::Data<Pool>, query: web::Query<QueryParams>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    println!("query >> \n\nstring_match => [ {} ] , \n\nsearch_string => [ {} ]\n\n", query.string_match, query.search_string);
+
+    if !(query.string_match.to_string() == "exact" || query.string_match.to_string() == "like") {
+        return Err(CustomError::QueryError)
+    }
+
+    let sanitized_str = sanitize_string(query.search_string.as_str()).await;
+
+    let mut inner_query = "".to_string();
+
+    if query.string_match.as_str() == "exact" { // exact string match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        inner_query = inner_query + " ( ";
+        inner_query = inner_query + format!(" json_data->>'id' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'name' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'specialCode' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + " ) ";
+    } else if query.string_match.as_str() == "like" { // pattern match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        inner_query = inner_query + " ( ";
+        inner_query = inner_query + format!(" json_data->>'id' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'name' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'specialCode' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + " ) ";
+    } else {
+        return Err(CustomError::QueryError)
+    }
+
+    println!("inner_query >> \n\n[ {} ]\n\n",inner_query);
+
+    let complete_query = format!("SELECT json_data from public.table2 WHERE {}", inner_query);
+
+    let rows = client.query(complete_query.as_str(), &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data2> = Vec::new();
+
+    for row in rows {
+        let json_data: Json<Data2> = row.get("json_data");
+        println!("{:#?}", json_data);
+        let my_struct = Data2 {
+          id: json_data.0.id,
+          special_code: json_data.0.special_code,
+          name: json_data.0.name,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+
+/*
 This function will receive data via POST Request
 Example:
-
 curl -X POST http://localhost:8080/data \
 -H "accept: application/json" \
 -H "content-type: application/json" \
@@ -6244,6 +6374,21 @@ async fn hello_world() -> impl Responder {
     HttpResponse::Ok().body("hi! 👋")
 }
 
+/*
+Testing sanitize_string(...)
+
+fn main() {
+    let original_string = "Hello! This is a test string with various characters: #$%^&*()";
+    let sanitized = sanitize_string(original_string);
+    println!("Sanitized string: {}", sanitized);
+}
+*/
+
+async fn sanitize_string(input: &str) -> String {
+    input.chars()
+        .filter(|&c| c.is_ascii_alphanumeric() || "_./-@,".contains(c))
+        .collect()
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -6264,6 +6409,7 @@ async fn main() -> std::io::Result<()> {
             .service(hello_world)
             .route("data", web::post().to(receive_data))
             .route("fetch_2", web::get().to(get_data_2))
+            .route("fetch_with_query_2", web::get().to(get_data_with_query_2))
             .route("fetch_1", web::get().to(get_data_1))
     })
     .bind(("127.0.0.1", 8080))?
