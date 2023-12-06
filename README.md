@@ -20,6 +20,8 @@ Please have a look the following file for code snippets/samples
 
 [Sanitize String And Split String](#sanitize-string-and-split-string)
 
+[Actix REST API With Advanced Query And PostgreSQL Backend](#actix-rest-api-with-advanced-query-and-postgresql-backend)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -6234,7 +6236,7 @@ async fn get_data_2(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomErro
 
 PostgreSQL Query For Query JSON Fields:
 
-hcm_galaxy2=# select * from table2;
+db=# select * from table2;
                   id                  |                                       json_data
 --------------------------------------+----------------------------------------------------------------------------------------
  82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
@@ -6242,13 +6244,13 @@ hcm_galaxy2=# select * from table2;
  82115a42-3b60-4adf-b7c8-6a5afe73bc62 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name": "test2", "specialCode": "3000"}
 (3 rows)
 
-hcm_galaxy2=# select * from table2 where json_data->>'id' = '82115a42-3b60-4adf-b7c8-6a5afe73bc60';
+db=# select * from table2 where json_data->>'id' = '82115a42-3b60-4adf-b7c8-6a5afe73bc60';
                   id                  |                                       json_data
 --------------------------------------+---------------------------------------------------------------------------------------
  82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
 (1 row)
 
-hcm_galaxy2=# select * from table2 where json_data->>'id' like '%6a5afe73bc60%';
+db=# select * from table2 where json_data->>'id' like '%6a5afe73bc60%';
                   id                  |                                       json_data
 --------------------------------------+---------------------------------------------------------------------------------------
  82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
@@ -6502,4 +6504,923 @@ validated_updated_str : abc#555#xyz-123#3-2-1#a-b-c
 my_list : ["abc", "555", "xyz-123", "3-2-1", "a-b-c"]
 
 */
+```
+
+#### [Actix REST API With Advanced Query And PostgreSQL Backend](#actix-rest-api-with-advanced-query-and-postgresql-backend)
+
+> Please see the comments inside the code, which shows HTTP GET Request and corresponding output
+
+```rust
+use serde::{Deserialize, Serialize};
+use sqlx::postgres::PgPoolOptions;
+use sqlx::PgPool;
+use std::env;
+use tokio_postgres::{Error, row};
+use tokio_postgres::NoTls;
+use actix_web::{get, post, web, web::Data, App, HttpResponse, HttpServer};
+use actix_web::{Responder, HttpRequest, http, middleware, middleware::Logger, ResponseError};
+use futures::future;
+use futures::Future;
+use uuid::Uuid;
+use deadpool_postgres::{Config, Client, Pool};
+use openssl::ssl::{SslConnector, SslMethod};
+use postgres_openssl::*;
+use tokio::runtime::Runtime;
+use ::config::ConfigError;
+use dotenv::dotenv;
+use tokio_postgres::tls::MakeTlsConnect;
+use derive_more::{Display,From};
+use tokio_postgres::types::Json;
+use regex::Regex;
+use serde_json::to_string;
+
+extern crate emoji_logger;
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Data1 {
+    // Define your data structure
+    random_num: i32,
+    random_float: f64,
+    md5: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct Data2 {
+    id: Uuid,
+    name: String,
+    special_code: String
+}
+
+#[derive(Deserialize)]
+struct QueryParams {
+    string_match: String, // 'like' or 'exact'
+    search_string: String, // 'xyz' or '123-xyz' > basically any search string
+}
+
+#[derive(Deserialize)]
+struct QueryParamsAdvanced {
+    //----------------------------------------------------
+    // examples of value for (string_match)
+    // 'like' or 'exact'
+    string_match: String,
+    //----------------------------------------------------
+    // examples of value for (search_type)
+    // this can be 'or' (OR) 'and'
+    // 'or' means , search for 'abc' | 'xyz' etc
+    // 'and' means , search for 'abc' + 'xyz'
+    search_type: String,
+    //----------------------------------------------------
+    // examples of value for (search_string) > basically any search string
+    // 'xyz'
+    // '123-xyz'
+    // 'xyz,555,abc-123' (',' delimited values : for multiple values)
+    // if you gave (search_type=and), then search the table for all columns where : 'xyz' AND '555' AND 'abc-123' is present
+    // if you gave (search_type=or), then search the table for all columns where : 'xyz' OR '555' OR 'abc-123' is present
+    search_string: String,
+}
+
+#[derive(Display, From, Debug)]
+enum CustomError {
+    DatabaseError,
+    InvalidData,
+    QueryError,
+}
+impl std::error::Error for CustomError {}
+impl ResponseError for CustomError {
+    fn error_response(&self) -> HttpResponse {
+        match *self {
+            CustomError::DatabaseError => HttpResponse::InternalServerError().finish(),
+            CustomError::InvalidData => HttpResponse::BadRequest().finish(),
+            CustomError::QueryError => HttpResponse::BadRequest().finish(),
+        }
+    }
+}
+
+
+impl QueryParamsAdvanced {
+    fn validate(&self) -> bool {
+        return !self.search_type.is_empty() && !self.string_match.is_empty() && !self.search_string.is_empty()
+    }
+}
+
+/*
+
+Initial Setup
+
+Make sure to create ENV file (app.rust.env)
+
+DATABASE_URL=postgres://<USERNAME>:<PASSWORD>@<HOSTNAME>/<DBNAME>
+PG.USER=<USERNAME>
+PG.PASSWORD=<PASSWORD>
+PG.HOST=<HOSTNAME>
+PG.PORT=5432
+PG.DBNAME=<DBNAME>
+PG.POOL.MAX_SIZE=16
+RUST_LOG=actix_web=info
+*/
+
+/*
+Operations for [ table1 ]
+
+Step-1: Manually Create Table >>
+
+Column-1 : random_num (integer)
+Column-2 : random_float (floating point number)
+Column-3 : md5 (text/string)
+
+CREATE TABLE IF NOT EXISTS table1(
+   random_num INT NOT NULL,
+   random_float DOUBLE PRECISION NOT NULL,
+   md5 TEXT NOT NULL
+);
+
+Confirm On DB >>
+
+# \d table1
+                      Table "public.table1"
+    Column    |       Type       | Collation | Nullable | Default
+--------------+------------------+-----------+----------+---------
+ random_num   | integer          |           | not null |
+ random_float | double precision |           | not null |
+ md5          | text             |           | not null |
+
+Step-2: Manually Insert Records through SQL Query & Verify
+
+INSERT INTO table1 (random_num, random_float, md5)
+    SELECT
+    floor(random()* (999-100 + 1) + 100),
+    random(),
+    md5(random()::text)
+ from generate_series(1,100);
+
+
+# select * from table1 limit 3;
+
+ random_num |    random_float    |               md5
+------------+--------------------+----------------------------------
+        178 | 0.4448593893793138 | b0b71cf1f224cbcea917928eee6f9fd9
+        884 | 0.9987171714499112 | 8509ec06ce85f98506f3987ef5ce6db9
+        227 | 0.5995229322453817 | 107f165cd7db33830d3967d9fb9cfc04
+(3 rows)
+
+Step-3: Query Via HTTP GET Request >>
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" http://localhost:8080/fetch_1 2>/dev/null | python -m json.tool
+[
+    {
+        "random_num": 178,
+        "random_float": 0.4448593893793138,
+        "md5": "b0b71cf1f224cbcea917928eee6f9fd9"
+    },
+    {
+        "random_num": 884,
+        "random_float": 0.9987171714499112,
+        "md5": "8509ec06ce85f98506f3987ef5ce6db9"
+    },
+    ...
+    ...
+    ...
+    {
+        "random_num": 160,
+        "random_float": 0.24041538274591545,
+        "md5": "ffafdc06f49c26daaf9989631f8e8de3"
+    }
+]
+
+*/
+
+/*
+
+Operations for [ table2 ]
+
+Step-1: Manually Create Table through SQL Query
+
+Column-1 : id (uuid) -> primary key
+Column-2 : json_data (jsonb) , example of data in this column : {"id": "<Random-UUID>", "name": "<SOME_STRING>", "specialCode": "<SOME_NUMBER>"}
+
+CREATE TABLE IF NOT EXISTS public.table2 (
+    id uuid NOT NULL,
+    json_data jsonb NOT NULL,
+    CONSTRAINT my_pk2 PRIMARY KEY (id)
+);
+
+Confirm On DB:
+
+#\d public.table2
+               Table "public.table2"
+  Column   | Type  | Collation | Nullable | Default
+-----------+-------+-----------+----------+---------
+ id        | uuid  |           | not null |
+ json_data | jsonb |           | not null |
+Indexes:
+    "my_pk2" PRIMARY KEY, btree (id)
+
+Step-2: Insert Some Records via HTTP POST
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name":"test", "specialCode": "1000"}'
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name":"test2", "specialCode": "2000"}'
+
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name":"test2", "specialCode": "3000"}'
+
+Step-5: Connect to Database, Verify With SQL Query
+
+# select * from public.table2;
+                  id                  |                                       json_data
+--------------------------------------+----------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc61 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name": "test2", "specialCode": "2000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc62 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name": "test2", "specialCode": "3000"}
+(3 rows)
+
+Step-6: Verify/Fetch Records Through HTTP GET API
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" http://localhost:8080/fetch_2 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    },
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61",
+        "name": "test2",
+        "specialCode": "2000"
+    },
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62",
+        "name": "test2",
+        "specialCode": "3000"
+    }
+]
+
+*/
+
+
+/*
+    Make sure you populate the (rust.app.env) file
+*/
+async fn make_db_pool() -> Pool {
+    dotenv().ok();
+    dotenv::from_filename("app.rust.env").ok();
+
+    let mut cfg = Config::new();
+    cfg.host = Option::from(env::var("PG.HOST").unwrap());
+    cfg.user = Option::from(env::var("PG.USER").unwrap());
+    cfg.password = Option::from(env::var("PG.PASSWORD").unwrap());
+    cfg.dbname = Option::from(env::var("PG.DBNAME").unwrap());
+    let pool: Pool = cfg.create_pool(None, tokio_postgres::NoTls).unwrap();
+    pool
+}
+
+
+async fn insert_2(client: &Client, sample: &Data2) -> Result<u64, tokio_postgres::Error> {
+    client
+        .execute(
+            "INSERT INTO public.table2 (id, json_data) VALUES ($1, $2)",
+            &[&sample.id, &Json(&sample)],
+        )
+        .await
+}
+
+async fn get_data_1(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    let rows = client.query("SELECT * from table1", &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data1> = Vec::new();
+
+    for row in rows {
+        let random_num: i32  = row.get("random_num");
+        let random_float: f64  = row.get("random_float");
+        let md5: String  = row.get("md5");
+
+        let my_struct = Data1 {
+            random_num,
+            random_float,
+            md5,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+
+async fn get_data_2(db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    let rows = client.query("SELECT json_data from public.table2", &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data2> = Vec::new();
+
+    for row in rows {
+        let json_data: Json<Data2> = row.get("json_data");
+        println!("{:#?}", json_data);
+        let my_struct = Data2 {
+          id: json_data.0.id,
+          special_code: json_data.0.special_code,
+          name: json_data.0.name,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+/*
+
+PostgreSQL Query For Query JSON Fields:
+
+# select * from table2;
+                  id                  |                                       json_data
+--------------------------------------+----------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc61 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc61", "name": "test2", "specialCode": "2000"}
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc62 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc62", "name": "test2", "specialCode": "3000"}
+(3 rows)
+
+# select * from table2 where json_data->>'id' = '82115a42-3b60-4adf-b7c8-6a5afe73bc60';
+                  id                  |                                       json_data
+--------------------------------------+---------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+(1 row)
+
+# select * from table2 where json_data->>'id' like '%6a5afe73bc60%';
+                  id                  |                                       json_data
+--------------------------------------+---------------------------------------------------------------------------------------
+ 82115a42-3b60-4adf-b7c8-6a5afe73bc60 | {"id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name": "test", "specialCode": "1000"}
+(1 row)
+
+*/
+
+/*
+
+Sample Outputs For Below Function : get_data_with_query_2(...) >>
+
+Pattern Match (string_match=like)
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" "http://localhost:8080/fetch_with_query_2?string_match=like&search_string=6a5afe73bc60" 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    }
+]
+
+Exact Match (string_match=exact)
+
+curl -X GET -H "accept: application/json" -H "content-type: application/json" "http://localhost:8080/fetch_with_query_2?string_match=exact&search_string=82115a42-3b60-4adf-b7c8-6a5afe73bc60" 2>/dev/null | python -m json.tool
+[
+    {
+        "id": "82115a42-3b60-4adf-b7c8-6a5afe73bc60",
+        "name": "test",
+        "specialCode": "1000"
+    }
+]
+
+*/
+async fn get_data_with_query_2(db_pool: web::Data<Pool>, query: web::Query<QueryParams>) -> Result<HttpResponse, CustomError>  {
+    let client: Client = db_pool.get().await.unwrap();
+
+    println!("query >> \n\nstring_match => [ {} ] , \n\nsearch_string => [ {} ]\n\n", query.string_match, query.search_string);
+
+    if !(query.string_match.to_string() == "exact" || query.string_match.to_string() == "like") {
+        return Err(CustomError::QueryError)
+    }
+
+    let sanitized_str = sanitize_string(query.search_string.as_str()).await;
+
+    let mut inner_query = "".to_string();
+
+    if query.string_match.as_str() == "exact" { // exact string match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        inner_query = inner_query + " ( ";
+        inner_query = inner_query + format!(" json_data->>'id' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'name' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'specialCode' = '{}' ", sanitized_str).as_str();
+        inner_query = inner_query + " ) ";
+    } else if query.string_match.as_str() == "like" { // pattern match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        inner_query = inner_query + " ( ";
+        inner_query = inner_query + format!(" json_data->>'id' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'name' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + format!(" OR json_data->>'specialCode' like '%{}%' ", sanitized_str).as_str();
+        inner_query = inner_query + " ) ";
+    } else {
+        return Err(CustomError::QueryError)
+    }
+
+    println!("inner_query >> \n\n[ {} ]\n\n",inner_query);
+
+    let complete_query = format!("SELECT json_data from public.table2 WHERE {}", inner_query);
+
+    let rows = client.query(complete_query.as_str(), &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data2> = Vec::new();
+
+    for row in rows {
+        let json_data: Json<Data2> = row.get("json_data");
+        println!("{:#?}", json_data);
+        let my_struct = Data2 {
+          id: json_data.0.id,
+          special_code: json_data.0.special_code,
+          name: json_data.0.name,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+/*
+To test the below function, we will use data from the table which was already populated >>
+
+# select * from public.table1 limit 20;
+
+ random_num |    random_float     |               md5
+------------+---------------------+----------------------------------
+        178 |  0.4448593893793138 | b0b71cf1f224cbcea917928eee6f9fd9
+        884 |  0.9987171714499112 | 8509ec06ce85f98506f3987ef5ce6db9
+        227 |  0.5995229322453817 | 107f165cd7db33830d3967d9fb9cfc04
+        748 |  0.5057753720795759 | f61298bd0d5c5a6d9221ec23a8f04254
+        965 | 0.01908963305890765 | 3be05140d21c1ed4826c048716780d20
+        780 |  0.1196140984027636 | 605244cc2944631e428c62452ea503fb
+        527 |  0.8780820632179207 | b825cb9a9bbf1af5bab08a0f876b1b9d
+        772 |  0.5709867230460972 | 37d27891706dac89e96fe065d0895a20
+        835 | 0.08642430332279716 | e08dc8ffb4ada40546b1978c345a7693
+        133 |  0.5025188130212683 | 19acaa9451099cb90faa52647f163629
+        172 | 0.09138717604981039 | 9718bccd47be4004494082f51694a3fb
+        502 |  0.9575964213380033 | 237e13853c28fdd85b19a69e9761c0d4
+        696 |  0.1575453174179664 | eb24c501fcd437e51833af91f2b001f7
+        934 | 0.10996602314173742 | 1d0ab023f983d0f9839ba03962b23f10
+        580 |  0.9346545416868715 | b80147c8dc29ac799973e459d2330e26
+        672 | 0.11810111293834069 | 8dfd3cb0a70634cef7eba8ff057e3d4c
+        143 | 0.06132282664914257 | 82831fd645a597274ae06fa45a9f785d
+        586 |  0.9936290273894173 | a6f23a47f4960358c71d8687c23c37fe
+        973 |  0.7346715379786453 | af26aa7f82cbe24760516710edfb296b
+        529 |  0.2696997793540632 | 9756fe86e3c903fbf18236d01de02692
+(20 rows)
+
+Example of HTTP GET Requests >>
+
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or
+
+Output >>
+
+table_columns : [
+    "random_num",
+    "random_float",
+    "md5",
+]
+total_combinations : 6
+string_match : like
+search_type : or
+inner_query >>
+
+ (  (  random_num::text like '%696%' OR  random_float::text like '%696%' OR  md5::text like '%696%'  ) OR  (  random_num::text like '%586%' OR  random_float::text like '%586%' OR  md5::text like '%586%'  )  )
+
+
+complete_query >>
+
+SELECT * from public.table1 WHERE  (  (  random_num::text like '%696%' OR  random_float::text like '%696%' OR  md5::text like '%696%'  ) OR  (  random_num::text like '%586%' OR  random_float::text like '%586%' OR  md5::text like '%586%'  )  )
+
+---------------------------------------------------------------------------------------------------
+
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=e08dc8f,3a8f04254&search_type=or
+
+Output >>
+
+table_columns : [
+    "random_num",
+    "random_float",
+    "md5",
+]
+total_combinations : 6
+string_match : like
+search_type : or
+inner_query >>
+
+ (  (  random_num::text like '%e08dc8f%' OR  random_float::text like '%e08dc8f%' OR  md5::text like '%e08dc8f%'  ) OR  (  random_num::text like '%3a8f04254%' OR  random_float::text like '%3a8f04254%' OR  md5::text like '%3a8f04254%'  )  )
+
+
+complete_query >>
+
+SELECT * from public.table1 WHERE  (  (  random_num::text like '%e08dc8f%' OR  random_float::text like '%e08dc8f%' OR  md5::text like '%e08dc8f%'  ) OR  (  random_num::text like '%3a8f04254%' OR  random_float::text like '%3a8f04254%' OR  md5::text like '%3a8f04254%'  )  )
+
+---------------------------------------------------------------------------------------------------
+
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=9718bccd47be4004494082f51694a3fb&search_type=and
+
+Output >>
+
+table_columns : [
+    "random_num",
+    "random_float",
+    "md5",
+]
+total_combinations : 3
+string_match : like
+search_type : and
+inner_query >>
+
+ (  (  random_num::text like '%9718bccd47be4004494082f51694a3fb%' OR  random_float::text like '%9718bccd47be4004494082f51694a3fb%' OR  md5::text like '%9718bccd47be4004494082f51694a3fb%'  )  )
+
+
+complete_query >>
+
+SELECT * from public.table1 WHERE  (  (  random_num::text like '%9718bccd47be4004494082f51694a3fb%' OR  random_float::text like '%9718bccd47be4004494082f51694a3fb%' OR  md5::text like '%9718bccd47be4004494082f51694a3fb%'  )  )
+
+---------------------------------------------------------------------------------------------------
+
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or
+
+Output >>
+
+table_columns : [
+    "random_num",
+    "random_float",
+    "md5",
+]
+total_combinations : 6
+string_match : like
+search_type : or
+inner_query >>
+
+ (  (  random_num::text like '%696%' OR  random_float::text like '%696%' OR  md5::text like '%696%'  ) OR  (  random_num::text like '%586%' OR  random_float::text like '%586%' OR  md5::text like '%586%'  )  )
+
+
+complete_query >>
+
+SELECT * from public.table1 WHERE  (  (  random_num::text like '%696%' OR  random_float::text like '%696%' OR  md5::text like '%696%'  ) OR  (  random_num::text like '%586%' OR  random_float::text like '%586%' OR  md5::text like '%586%'  )  )
+
+---------------------------------------------------------------------------------------------------
+
+*/
+
+async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Query<QueryParamsAdvanced>) -> Result<HttpResponse, CustomError>  {
+
+    if !query.validate() {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"please pass all the required data : 'string_match' , 'search_string' and 'search_type'\"}"))
+    }
+
+    let client: Client = db_pool.get().await.unwrap();
+
+    println!("query >> \n\nstring_match => [ {} ] , \n\nsearch_string => [ {} ]\n\n", query.string_match, query.search_string);
+
+    if !(query.string_match.to_string() == "exact" || query.string_match.to_string() == "like") {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"string_match should be 'exact' (OR) 'like'\"}"))
+    }
+
+    if !(query.search_type.to_string() == "and" || query.search_type.to_string() == "or") {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"search_type should be 'and' (OR) 'or'\"}"))
+    }
+
+    let search_strings = get_items(query.search_string.as_str()).await;
+
+    let length_of_search_strings = search_strings.len() as i32;
+
+    if length_of_search_strings < 1 {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"total search string should be greater than or equal to 1 (separated by ',')\"}"))
+    }
+
+    let mut table_columns = vec![];
+    table_columns.push("random_num");
+    table_columns.push("random_float");
+    table_columns.push("md5");
+
+    println!("table_columns : {:#?}", table_columns);
+
+    let mut inner_query = "".to_string();
+
+    let total_combinations = table_columns.len() as i32 * search_strings.len() as i32;
+
+    println!("total_combinations : {}", total_combinations);
+
+    println!("string_match : {}", query.string_match.to_string());
+    println!("search_type : {}", query.search_type.to_string());
+
+    let length_of_columns = table_columns.len() as i32;
+
+    if length_of_columns < 1 {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"total number of columns on PG table should be greater than or equal to 1\"}"))
+    }
+
+    if query.string_match.as_str() == "exact" { // exact string match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        if query.search_type.to_string() == "and" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" {}::text = '{}' ", my_column.to_string(), my_search_str).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" {}::text = '{}' OR ", my_column.to_string(), my_search_str).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) AND ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else if query.search_type.to_string() == "or" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" {}::text = '{}' ", my_column.to_string(), my_search_str).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" {}::text = '{}' OR ", my_column.to_string(), my_search_str).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) OR ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else {
+            return Err(CustomError::QueryError)
+        }
+
+    } else if query.string_match.as_str() == "like" { // pattern match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        if query.search_type.to_string() == "and" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" {}::text like '%{}%' ", my_column.to_string(), my_search_str).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" {}::text like '%{}%' OR ", my_column.to_string(), my_search_str).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) AND ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else if query.search_type.to_string() == "or" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" {}::text like '%{}%' ", my_column.to_string(), my_search_str).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" {}::text like '%{}%' OR ", my_column.to_string(), my_search_str).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) OR ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else {
+            return Err(CustomError::QueryError)
+        }
+    } else {
+        return Err(CustomError::QueryError)
+    }
+
+    println!("inner_query >> \n\n{}\n\n",inner_query);
+
+    let complete_query = format!("SELECT * from public.table1 WHERE {}", inner_query);
+
+    println!("complete_query >> \n\n{}\n\n",complete_query);
+
+    let rows = client.query(complete_query.as_str(), &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs:Vec<Data1> = Vec::new();
+
+    for row in rows {
+        let random_num = row.get("random_num");
+        let random_float = row.get("random_float");
+        let md5 = row.get("md5");
+
+        let my_struct = Data1 {
+            random_num,
+            random_float,
+            md5,
+        };
+        structs.push(my_struct)
+    }
+
+    match serde_json::to_string(&structs) {
+        Ok(my_data) => {
+          Ok(HttpResponse::Ok().content_type("application/json").body(my_data))
+        },
+        Err(_) => {
+            Err(CustomError::DatabaseError)
+        }
+    }
+}
+
+
+
+/*
+This function will receive data via POST Request
+Example:
+curl -X POST http://localhost:8080/data \
+-H "accept: application/json" \
+-H "content-type: application/json" \
+-d '{"id":"82115a42-3b60-4adf-b7c8-6a5afe73bc60", "name":"test", "specialCode": "1000"}'
+*/
+async fn receive_data(record: web::Json<Data2>, db_pool: web::Data<Pool>) -> Result<HttpResponse, CustomError> {
+    let client: Client = db_pool
+        .get()
+        .await
+        .map_err(|_| CustomError::DatabaseError)?;
+
+    insert_2(&client, &record)
+        .await
+        .map_err(|_| CustomError::InvalidData)?;
+
+    Ok(HttpResponse::Ok().body(record.id.to_hyphenated().to_string()))
+}
+
+async fn get_connection(db_pool: Data<Pool>) -> Result<Client, String> {
+    db_pool.get().await.map_err(|err| err.to_string())
+}
+
+#[get("/api/health")]
+async fn hello_world() -> impl Responder {
+    HttpResponse::Ok().body("hi! 👋")
+}
+
+/*
+Testing sanitize_string(...)
+
+fn main() {
+    let original_string = "Hello! This is a test string with various characters: #$%^&*()";
+    let sanitized = sanitize_string(original_string);
+    println!("Sanitized string: {}", sanitized);
+}
+*/
+
+async fn sanitize_string(input: &str) -> String {
+    input.chars()
+        .filter(|&c| c.is_ascii_alphanumeric() || "_./-@,#".contains(c))
+        .collect()
+}
+
+async fn remove_leading_trailing_characters(input: &str) -> String {
+    input.trim_start_matches(",").trim_end_matches(",").to_string()
+}
+
+async fn replace_multiple_characters(input: &str) -> String {
+    let re = Regex::new(r",+").unwrap();
+    re.replace_all(input, ",").to_string()
+}
+
+async fn split_string(input: &str) -> Vec<String> {
+    input.split(",").map(|s| s.to_string()).collect()
+}
+
+/*
+What get_items(...) Does >>
+
+let original_string = "###abc#555#xyz-123###";
+let my_items = get_items(original_string);
+
+let original_string = "abcd";
+let my_items = get_items(original_string);
+
+let original_string = "###abc##555####xyz-123#3-2-1#a-b-c###";
+let my_items = get_items(original_string);
+
+Output:
+
+updated_str : abc#555#xyz-123
+validated_updated_str : abc#555#xyz-123
+my_list : ["abc", "555", "xyz-123"]
+
+
+updated_str : abcd
+validated_updated_str : abcd
+my_list : ["abcd"]
+
+
+updated_str : abc##555####xyz-123#3-2-1#a-b-c
+validated_updated_str : abc#555#xyz-123#3-2-1#a-b-c
+my_list : ["abc", "555", "xyz-123", "3-2-1", "a-b-c"]
+*/
+async fn get_items(my_str: &str) -> Vec<String> {
+    let sanitized_str = sanitize_string(my_str).await;
+
+    let updated_str = remove_leading_trailing_characters(sanitized_str.as_str()).await;
+    println!("updated_str : {}", updated_str);
+
+    let validated_updated_str = replace_multiple_characters(updated_str.as_str()).await;
+    println!("validated_updated_str : {}", validated_updated_str);
+
+    let my_list = split_string(validated_updated_str.as_str()).await;
+    println!("my_list : {:?}", my_list);
+
+    println!("\n");
+
+    my_list
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+
+    dotenv::from_filename("app.rust.env").ok();
+
+    println!("🧑‍🔬 Sample Service Starting");
+
+    let pool = make_db_pool().await;
+
+    std::env::set_var("RUST_LOG", "actix_web=debug");
+    emoji_logger::init();
+
+    let result = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .app_data(Data::new(pool.clone()))
+            .service(hello_world)
+            .route("data", web::post().to(receive_data))
+            .route("fetch_2", web::get().to(get_data_2))
+            .route("fetch_with_query_2", web::get().to(get_data_with_query_2))
+            .route("fetch_with_query_advanced_2", web::get().to(get_data_with_advanced_query_2))
+            .route("fetch_1", web::get().to(get_data_1))
+    })
+    .bind(("127.0.0.1", 8080))?
+    .run()
+    .await;
+
+    println!("🧑‍🔬 Sample Service Stopping");
+
+    result
+}
 ```
