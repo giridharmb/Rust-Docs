@@ -18,6 +18,8 @@ Please have a look the following file for code snippets/samples
 
 [Actix REST API With PostgreSQL Backend](#actix-rest-api-with-postgresql-backend)
 
+[Sanitize String And Split String](#sanitize-string-and-split-string)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -6420,4 +6422,50 @@ async fn main() -> std::io::Result<()> {
 
     result
 }
+```
+
+#### [Sanitize String And Split String](#sanitize-string-and-split-string)
+
+```rust
+fn sanitize_string(input: &str) -> String {
+    input.chars()
+        .filter(|&c| c.is_ascii_alphanumeric() || "_./-@,#".contains(c))
+        .collect()
+}
+
+fn remove_leading_trailing_hashes(input: &str) -> String {
+    input.trim_start_matches("#").trim_end_matches("#").to_string()
+}
+
+fn split_string(input: &str) -> Vec<String> {
+    input.split("#").map(|s| s.to_string()).collect()
+}
+
+fn get_items(my_str: &str) -> Vec<String> {
+    let sanitized_str = sanitize_string(my_str);
+    let updated_str = remove_leading_trailing_hashes(sanitized_str.as_str());
+    println!("updated_str : {}", updated_str);
+    let my_list = split_string(updated_str.as_str());
+    println!("my_list : {:?}", my_list);
+    my_list
+}
+
+fn main() {
+    let original_string = "###abc#555#xyz-123###";
+    let my_items = get_items(original_string);
+    
+    let original_string = "abcd";
+    let my_items = get_items(original_string);
+}
+
+/*
+
+Output:
+
+updated_str : abc#555#xyz-123
+my_list : ["abc", "555", "xyz-123"]
+updated_str : abcd
+my_list : ["abcd"]
+
+*/
 ```
