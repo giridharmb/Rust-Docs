@@ -6426,7 +6426,16 @@ async fn main() -> std::io::Result<()> {
 
 #### [Sanitize String And Split String](#sanitize-string-and-split-string)
 
+Please see the output below inside the code. This will >
+
+- Sanitize the string (removed not needed characters)
+- Remove `leading` AND `trailing` '#' character
+- Replace multiple repetitions of `#` character in-between with only single `#`
+- Then return the `Vec<String>` by splitting based of `#` character
+
 ```rust
+use regex::Regex;
+
 fn sanitize_string(input: &str) -> String {
     input.chars()
         .filter(|&c| c.is_ascii_alphanumeric() || "_./-@,#".contains(c))
@@ -6437,16 +6446,29 @@ fn remove_leading_trailing_hashes(input: &str) -> String {
     input.trim_start_matches("#").trim_end_matches("#").to_string()
 }
 
+fn replace_multiple_hashes(input: &str) -> String {
+    let re = Regex::new(r"#+").unwrap();
+    re.replace_all(input, "#").to_string()
+}
+
 fn split_string(input: &str) -> Vec<String> {
     input.split("#").map(|s| s.to_string()).collect()
 }
 
 fn get_items(my_str: &str) -> Vec<String> {
     let sanitized_str = sanitize_string(my_str);
+    
     let updated_str = remove_leading_trailing_hashes(sanitized_str.as_str());
     println!("updated_str : {}", updated_str);
-    let my_list = split_string(updated_str.as_str());
+    
+    let validated_updated_str = replace_multiple_hashes(updated_str.as_str());
+    println!("validated_updated_str : {}", validated_updated_str);
+    
+    let my_list = split_string(validated_updated_str.as_str());
     println!("my_list : {:?}", my_list);
+    
+    println!("\n");
+    
     my_list
 }
 
@@ -6456,6 +6478,9 @@ fn main() {
     
     let original_string = "abcd";
     let my_items = get_items(original_string);
+    
+    let original_string = "###abc##555####xyz-123#3-2-1#a-b-c###";
+    let my_items = get_items(original_string);
 }
 
 /*
@@ -6463,9 +6488,18 @@ fn main() {
 Output:
 
 updated_str : abc#555#xyz-123
+validated_updated_str : abc#555#xyz-123
 my_list : ["abc", "555", "xyz-123"]
+
+
 updated_str : abcd
+validated_updated_str : abcd
 my_list : ["abcd"]
+
+
+updated_str : abc##555####xyz-123#3-2-1#a-b-c
+validated_updated_str : abc#555#xyz-123#3-2-1#a-b-c
+my_list : ["abc", "555", "xyz-123", "3-2-1", "a-b-c"]
 
 */
 ```
