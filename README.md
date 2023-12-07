@@ -20,7 +20,7 @@ Please have a look the following file for code snippets/samples
 
 [Sanitize String And Split String](#sanitize-string-and-split-string)
 
-[Sanitize String - Rust Playground](#https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=3b5289c32acfb26e9d92f6e172f6aa97)
+[Sanitize String - Rust Playground](https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=3b5289c32acfb26e9d92f6e172f6aa97)
 
 [Actix REST API With Advanced Query And PostgreSQL Backend](#actix-rest-api-with-advanced-query-and-postgresql-backend)
 
