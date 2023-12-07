@@ -6435,6 +6435,9 @@ Please see the output below inside the code. This will >
 - Replace multiple repetitions of `#` character in-between with only single `#`
 - Then return the `Vec<String>` by splitting based of `#` character
 
+[Rust Playground](#https://play.rust-lang.org/?version=stable&mode=debug&edition=2021&gist=3b5289c32acfb26e9d92f6e172f6aa97)
+
+
 ```rust
 use regex::Regex;
 
