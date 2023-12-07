@@ -6533,7 +6533,7 @@ use derive_more::{Display,From};
 use tokio_postgres::types::Json;
 use regex::Regex;
 use serde_json::to_string;
-
+use dirs;
 extern crate emoji_logger;
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -6578,6 +6578,8 @@ struct QueryParamsAdvanced {
     // if you gave (search_type=and), then search the table for all columns where : 'xyz' AND '555' AND 'abc-123' is present
     // if you gave (search_type=or), then search the table for all columns where : 'xyz' OR '555' OR 'abc-123' is present
     search_string: String,
+    //----------------------------------------------------
+    source_table: String, // ex: 't_1'
 }
 
 #[derive(Display, From, Debug)]
@@ -6998,7 +7000,7 @@ To test the below function, we will use data from the table which was already po
 
 Example of HTTP GET Requests >>
 
-http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or&source_table=t_1
 
 Output >>
 
@@ -7021,7 +7023,7 @@ SELECT * from public.table1 WHERE  (  (  random_num::text like '%696%' OR  rando
 
 ---------------------------------------------------------------------------------------------------
 
-http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=e08dc8f,3a8f04254&search_type=or
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=e08dc8f,3a8f04254&search_type=or&source_table=t_1
 
 Output >>
 
@@ -7044,7 +7046,7 @@ SELECT * from public.table1 WHERE  (  (  random_num::text like '%e08dc8f%' OR  r
 
 ---------------------------------------------------------------------------------------------------
 
-http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=9718bccd47be4004494082f51694a3fb&search_type=and
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=9718bccd47be4004494082f51694a3fb&search_type=and&source_table=t_1
 
 Output >>
 
@@ -7067,7 +7069,7 @@ SELECT * from public.table1 WHERE  (  (  random_num::text like '%9718bccd47be400
 
 ---------------------------------------------------------------------------------------------------
 
-http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or
+http://localhost:8080/fetch_with_query_advanced_2?string_match=like&search_string=696,586&search_type=or&source_table=t_1
 
 Output >>
 
@@ -7102,6 +7104,19 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
 
     println!("query >> \n\nstring_match => [ {} ] , \n\nsearch_string => [ {} ]\n\n", query.string_match, query.search_string);
 
+
+
+    if query.source_table.is_empty() {
+        return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"source_table cannot be empty !\"}"))
+    }
+
+    let mut actual_db_table = "".to_string();
+    let query_table = query.source_table.to_owned();
+    actual_db_table = match query_table.as_str() {
+        "t_1" => "table1".to_string(),
+        _ => return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"source_table is not valid !\"}"))
+    };
+
     if !(query.string_match.to_string() == "exact" || query.string_match.to_string() == "like") {
         return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"string_match should be 'exact' (OR) 'like'\"}"))
     }
@@ -7119,9 +7134,15 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
     }
 
     let mut table_columns = vec![];
-    table_columns.push("random_num");
-    table_columns.push("random_float");
-    table_columns.push("md5");
+
+    match query_table.as_str() {
+        "t_1" => {
+            table_columns.push("random_num");
+            table_columns.push("random_float");
+            table_columns.push("md5");
+        },
+        _ => return Ok(HttpResponse::BadRequest().content_type("application/json").body("{\"error\" : \"source_table is not valid !\"}"))
+    };
 
     println!("table_columns : {:#?}", table_columns);
 
@@ -7152,9 +7173,9 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
                 // --------------------------------------
                 for my_column in table_columns.to_owned() {
                     if column_counter == table_columns.len() as i32 {
-                        inner_query = inner_query + format!(" {}::text = '{}' ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     } else {
-                        inner_query = inner_query + format!(" {}::text = '{}' OR ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     }
                     column_counter += 1;
                 }
@@ -7176,9 +7197,9 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
                 // --------------------------------------
                 for my_column in table_columns.to_owned() {
                     if column_counter == table_columns.len() as i32 {
-                        inner_query = inner_query + format!(" {}::text = '{}' ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     } else {
-                        inner_query = inner_query + format!(" {}::text = '{}' OR ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     }
                     column_counter += 1;
                 }
@@ -7207,9 +7228,9 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
                 // --------------------------------------
                 for my_column in table_columns.to_owned() {
                     if column_counter == table_columns.len() as i32 {
-                        inner_query = inner_query + format!(" {}::text like '%{}%' ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     } else {
-                        inner_query = inner_query + format!(" {}::text like '%{}%' OR ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     }
                     column_counter += 1;
                 }
@@ -7231,9 +7252,9 @@ async fn get_data_with_advanced_query_2(db_pool: web::Data<Pool>, query: web::Qu
                 // --------------------------------------
                 for my_column in table_columns.to_owned() {
                     if column_counter == table_columns.len() as i32 {
-                        inner_query = inner_query + format!(" {}::text like '%{}%' ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     } else {
-                        inner_query = inner_query + format!(" {}::text like '%{}%' OR ", my_column.to_string(), my_search_str).as_str();
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
                     }
                     column_counter += 1;
                 }
@@ -7395,9 +7416,17 @@ async fn get_items(my_str: &str) -> Vec<String> {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
 
-    dotenv::from_filename("app.rust.env").ok();
+    // let environment = Option::from(env::var("ENVIRONMENT").unwrap()).unwrap();
 
-    println!("🧑‍🔬 Sample Service Starting");
+    // let home_dir = dirs::home_dir().unwrap().display().to_string();
+
+    let app_env_file = "app.rust.env".to_string();
+
+    let file_path = format!("/etc/secrets/{}", app_env_file);
+
+    dotenv::from_filename(file_path).ok();
+
+    println!("☝️Service Starting");
 
     let pool = make_db_pool().await;
 
@@ -7415,11 +7444,11 @@ async fn main() -> std::io::Result<()> {
             .route("fetch_with_query_advanced_2", web::get().to(get_data_with_advanced_query_2))
             .route("fetch_1", web::get().to(get_data_1))
     })
-    .bind(("127.0.0.1", 8080))?
+    .bind(("0.0.0.0", 8080))?
     .run()
     .await;
 
-    println!("🧑‍🔬 Sample Service Stopping");
+    println!("🚨 Sample Service Stopping");
 
     result
 }
