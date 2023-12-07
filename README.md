@@ -6515,6 +6515,21 @@ my_list : ["abc", "555", "xyz-123", "3-2-1", "a-b-c"]
 
 > Please see the comments inside the code, which shows HTTP GET Request and corresponding output
 
+FYI : If your backend table can have NULL values, then setup your `struct` with `Option<..>` this way >
+
+```rust
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct Data1 {
+    // Define your data structure
+    random_num: Option<i32>,
+    random_float: Option<f64>,
+    md5: Option<String>,
+}
+
+```
+
+`src/main.rs`
+
 ```rust
 use serde::{Deserialize, Serialize};
 use sqlx::postgres::PgPoolOptions;
