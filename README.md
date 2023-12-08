@@ -8049,7 +8049,7 @@ CMD ["./target/release/fastapi"]
 # 
 #  FYI : I'm syncing the code to Linux Machine & Building The Docker Image and Running It There...
 #
-# cd ~/git/rust/fastapi && rsync -avh --stats --progress Dockerfile Cargo.toml src openstack_configuration.yaml root@SOME-UBUNTU-HOST:~/git/rust/fastapi/
+# cd ~/git/rust/fastapi && rsync -avh --stats --progress Dockerfile Cargo.toml src my_configuration.yaml root@SOME-UBUNTU-HOST:~/git/rust/fastapi/
 # cd ~/git/rust/fastapi && rsync -avh --stats --progress ~/vault/* root@SOME-UBUNTU-HOST:~/vault/
 #
 # docker build . -t rust-app:latest
