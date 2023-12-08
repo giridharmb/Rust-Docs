@@ -5899,6 +5899,9 @@ openssl = "0.10.60"
 config = "0.13.4"
 uuid = { version = "0.8.2" , features = ["serde"]}
 derive_more = { version = "0.99.17", features = [] }
+regex = "1.7.1"
+dirs = "5.0.1"
+async-std = { version = "1.12.0", features = [] }
 ```
 
 Environment File `app.rust.env`
@@ -7472,4 +7475,587 @@ async fn main() -> std::io::Result<()> {
 
     result
 }
+```
+
+#### Customizations & Parallel PostgreSQL Queries
+
+> In my case function `get_data_with_advanced_single_query(...)` returns an JSON Array , but in `String` format
+
+So I'm using `stream::` to parallize the queries across different tables and fetch them
+
+```rust
+#[derive(Display, From, Debug)]
+enum CustomError {
+    DatabaseError,
+    InvalidData,
+    QueryError,
+    InvalidTable,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct DataX {
+    data_x_column_name_1: Option<String>,
+    data_x_column_name_2: Option<String>,
+    data_x_column_name_3: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct DataY {
+    data_y_column_name_1: Option<String>,
+    data_y_column_name_2: Option<String>,
+    data_y_column_name_3: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+struct DataZ {
+    data_z_column_name_1: Option<String>,
+    data_z_column_name_2: Option<String>,
+    data_z_column_name_3: Option<String>,
+}
+
+
+#[derive(Deserialize)]
+struct QueryParamsAdvanced {
+    //----------------------------------------------------
+    // examples of value for (string_match)
+    // 'like' or 'exact'
+    string_match: String,
+    //----------------------------------------------------
+    // examples of value for (search_type)
+    // this can be 'or' (OR) 'and'
+    // 'or' means , search for 'abc' | 'xyz' etc
+    // 'and' means , search for 'abc' + 'xyz'
+    search_type: String,
+    //----------------------------------------------------
+    // examples of value for (search_string) > basically any search string
+    // 'xyz'
+    // '123-xyz'
+    // 'xyz,555,abc-123' (',' delimited values : for multiple values)
+    // if you gave (search_type=and), then search the table for all columns where : 'xyz' AND '555' AND 'abc-123' is present
+    // if you gave (search_type=or), then search the table for all columns where : 'xyz' OR '555' OR 'abc-123' is present
+    search_string: String,
+    //----------------------------------------------------
+    source_table: String,
+}
+
+// used by >> 'my_table_for_data_1', 'my_table_for_data_2'
+async fn make_db_pool() -> Pool {
+    dotenv().ok();
+    dotenv::from_filename("app.rust.env").ok();
+
+    let mut cfg = Config::new();
+    cfg.host = Option::from(env::var("PG.HOST").unwrap());
+    cfg.user = Option::from(env::var("PG.USER").unwrap());
+    cfg.password = Option::from(env::var("PG.PASSWORD").unwrap());
+    cfg.dbname = Option::from(env::var("PG.DBNAME").unwrap());
+    let pool: Pool = cfg.create_pool(None, tokio_postgres::NoTls).unwrap();
+    pool
+}
+
+// used by >> 'my_table_for_data_3'
+async fn make_db_pool_v2() -> Pool {
+    dotenv().ok();
+    dotenv::from_filename("app.rust.env").ok();
+
+    let mut cfg = Config::new();
+    cfg.host = Option::from(env::var("PG.OS.HOST").unwrap());
+    cfg.user = Option::from(env::var("PG.OS.USER").unwrap());
+    cfg.password = Option::from(env::var("PG.OS.PASSWORD").unwrap());
+    cfg.dbname = Option::from(env::var("PG.OS.DBNAME").unwrap());
+    let pool: Pool = cfg.create_pool(None, tokio_postgres::NoTls).unwrap();
+    pool
+}
+
+
+async fn get_db_pool_for_table(source_table: &str) -> Result<Pool,CustomError> {
+    println!("source_table : {}", source_table.to_string());
+    return match source_table {
+        "my_table_for_data_1" => {
+            Ok(make_db_pool().await)
+        },
+        "my_table_for_data_2" => {
+            Ok(make_db_pool().await)
+        },
+        "my_table_for_data_3" => {
+            Ok(make_db_pool_v2().await)
+        },
+        _ => {
+            return Err(CustomError::InvalidTable)
+        }
+    };
+}
+
+> Important : the below function returns Result<String, CustomError> , Where (String) is an Array of JSON Objects
+
+async fn get_data_with_advanced_single_query(query: QueryParamsAdvanced) -> Result<String, CustomError> {
+    if !query.validate() {
+        return return Err(CustomError::QueryError);
+    }
+
+    let mut actual_db_table = "".to_string();
+
+    let query_table = query.source_table.to_owned();
+
+    actual_db_table = match query_table.as_str() {
+        "my_table_for_data_1" => "actual_postgres_table_1".to_string(),
+        "my_table_for_data_2" => "actual_postgres_table_2".to_string(),
+        "my_table_for_data_3" => "actual_postgres_table_3".to_string(),
+        _ => return Err(CustomError::QueryError)
+    };
+
+    let my_db_pool = get_db_pool_for_table(query.source_table.as_str()).await.unwrap();
+
+    let client: Client = my_db_pool.get().await.unwrap();
+
+    println!("query >> \n\nstring_match => [ {} ] , \n\nsearch_string => [ {} ]\n\n", query.string_match, query.search_string);
+
+    if query.source_table.is_empty() {
+        return return Err(CustomError::QueryError);
+    }
+
+
+    if !(query.string_match.to_string() == "exact" || query.string_match.to_string() == "like") {
+        return return Err(CustomError::QueryError);
+    }
+
+    if !(query.search_type.to_string() == "and" || query.search_type.to_string() == "or") {
+        return return Err(CustomError::QueryError);
+    }
+
+    let search_strings = get_items(query.search_string.as_str()).await;
+
+    let length_of_search_strings = search_strings.len() as i32;
+
+    if length_of_search_strings < 1 {
+        return return Err(CustomError::QueryError);
+    }
+
+    let mut table_columns = vec![];
+
+    match query_table.as_str() {
+        "my_table_for_data_1" => {
+            table_columns.push("data_x_column_name_1");
+            table_columns.push("data_x_column_name_2");
+            table_columns.push("data_x_column_name_3");
+        },
+        "my_table_for_data_2" => {
+            table_columns.push("data_y_column_name_1");
+            table_columns.push("data_y_column_name_2");
+            table_columns.push("data_y_column_name_3");
+        },
+        "my_table_for_data_3" => {
+            table_columns.push("data_z_column_name_1");
+            table_columns.push("data_z_column_name_2");
+            table_columns.push("data_z_column_name_3");
+        },
+        _ => return Err(CustomError::QueryError)
+    };
+
+    println!("table_columns : {:#?}", table_columns);
+
+    let mut inner_query = "".to_string();
+
+    let total_combinations = table_columns.len() as i32 * search_strings.len() as i32;
+
+    println!("total_combinations : {}", total_combinations);
+
+    println!("string_match : {}", query.string_match.to_string());
+    println!("search_type : {}", query.search_type.to_string());
+
+    let length_of_columns = table_columns.len() as i32;
+
+    if length_of_columns < 1 {
+        return Err(CustomError::QueryError);
+    }
+
+    if query.string_match.as_str() == "exact" { // exact string match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        if query.search_type.to_string() == "and" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) AND ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else if query.search_type.to_string() == "or" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" lower({}::text) = lower('{}') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) OR ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else {
+            return Err(CustomError::QueryError)
+        }
+
+    } else if query.string_match.as_str() == "like" { // pattern match
+        // search all JSON fields for possible match
+        // this can also be applied if there are other columns
+        if query.search_type.to_string() == "and" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) AND ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else if query.search_type.to_string() == "or" {
+            inner_query = inner_query + " ( ";
+            let mut search_string_counter = 1;
+            for my_search_str in search_strings.to_owned() {
+                inner_query = inner_query + " ( ";
+                let mut column_counter = 1;
+                // --------------------------------------
+                for my_column in table_columns.to_owned() {
+                    if column_counter == table_columns.len() as i32 {
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    } else {
+                        inner_query = inner_query + format!(" lower({}::text) like lower('%{}%') OR ", my_column.to_string(), my_search_str.to_lowercase()).as_str();
+                    }
+                    column_counter += 1;
+                }
+                if search_string_counter == search_strings.len() as i32 {
+                    inner_query = inner_query + " ) ";
+                } else {
+                    inner_query = inner_query + " ) OR ";
+                }
+                search_string_counter += 1;
+                // --------------------------------------
+            }
+            inner_query = inner_query + " ) ";
+        } else {
+            return Err(CustomError::QueryError)
+        }
+    } else {
+        return Err(CustomError::QueryError)
+    }
+
+    println!("inner_query >> \n\n{}\n\n",inner_query);
+
+    let complete_query = format!("SELECT * from {} WHERE {}", actual_db_table, inner_query);
+
+    println!("complete_query >> \n\n{}\n\n",complete_query);
+
+    let rows = client.query(complete_query.as_str(), &[]).await.map_err(|_| CustomError::DatabaseError)?;
+
+    let mut structs_1:Vec<DataX> = Vec::new();
+    let mut structs_2:Vec<DataY> = Vec::new();
+    let mut structs_3:Vec<DataZ> = Vec::new();
+
+    match query_table.as_str() {
+        "t_1" => {
+            for row in rows {
+                let random_num = row.get("random_num");
+                let random_float = row.get("random_float");
+                let md5 = row.get("md5");
+
+                let my_struct = Data1 {
+                    random_num,
+                    random_float,
+                    md5,
+                };
+                structs_1.push(my_struct)
+            }
+        },
+        "my_table_for_data_1" => {
+            for row in rows {
+                let data_x_column_name_1 = row.get("data_x_column_name_1");
+                let data_x_column_name_2 = row.get("data_x_column_name_2");
+                let data_x_column_name_2 = row.get("data_x_column_name_2");
+            
+
+                let my_struct = DataX {
+                    data_x_column_name_1,
+                    data_x_column_name_2,
+                    data_x_column_name_2,
+                };
+                structs_2.push(my_struct)
+            }
+        },
+        "my_table_for_data_2" => {
+            for row in rows {
+                let data_y_column_name_1 = row.get("data_y_column_name_1");
+                let data_y_column_name_2 = row.get("data_y_column_name_2");
+                let data_y_column_name_3 = row.get("data_y_column_name_3");
+            
+                let my_struct = DataY {
+                    data_y_column_name_1,
+                    data_y_column_name_2,
+                    data_y_column_name_3,
+                };
+                structs_2.push(my_struct);
+            }
+        },
+        "my_table_for_data_3" => {
+            for row in rows {
+                let data_z_column_name_1 = row.get("data_z_column_name_1");
+                let data_z_column_name_2 = row.get("data_z_column_name_2");
+                let data_z_column_name_3 = row.get("data_z_column_name_3");
+
+                let my_struct = DataZ {
+                    data_z_column_name_1,
+                    data_z_column_name_2,
+                    data_z_column_name_3,
+                };
+                structs_3.push(my_struct);
+            }
+        },
+        _ => {
+            return Err(CustomError::InvalidTable);
+        }
+    };
+
+
+    return match query_table.as_str() {
+        "my_table_for_data_1" => {
+            Ok(serde_json::to_string(&structs_1).unwrap())
+        },
+        "my_table_for_data_2" => {
+            Ok(serde_json::to_string(&structs_2).unwrap())
+        },
+        "my_table_for_data_3" => {
+            Ok(serde_json::to_string(&structs_3).unwrap())
+        },
+        _ => {
+            return Err(CustomError::InvalidTable);
+        }
+    };
+}
+
+
+async fn get_data_with_advanced_query_4(query: web::Query<QueryParamsAdvanced>) -> Result<HttpResponse, CustomError>  {
+
+    let my_query1 = QueryParamsAdvanced{
+        string_match: query.string_match.to_string(),
+        search_type: query.search_type.to_string(),
+        search_string: query.search_string.to_string(),
+        source_table: "my_table_for_data_1".to_string(),
+    };
+
+    let my_query2 = QueryParamsAdvanced{
+        string_match: query.string_match.to_string(),
+        search_type: query.search_type.to_string(),
+        search_string: query.search_string.to_string(),
+        source_table: "my_table_for_data_2".to_string(),
+    };
+
+    let my_query3 = QueryParamsAdvanced{
+        string_match: query.string_match.to_string(),
+        search_type: query.search_type.to_string(),
+        search_string: query.search_string.to_string(),
+        source_table: "my_table_for_data_3".to_string(),
+    };
+
+    let mut jobs = vec![];
+    jobs.push(my_query1);
+    jobs.push(my_query2);
+    jobs.push(my_query3);
+
+    let concurrency = 10;
+
+    let results: Vec<Result<String, CustomError>> = stream::iter(jobs).map(get_data_with_advanced_single_query).buffer_unordered(concurrency).collect().await;
+
+    let mut my_results = vec![];
+
+    for item in results {
+        let my_result = match item {
+            Ok(d) => {
+                let json_items: Vec<Value> = serde_json::from_str(d.as_str()).unwrap();
+                for item in json_items {
+                    my_results.push(item);
+                }
+            },
+            Err(e) => {
+                println!("ERROR : {:#?}", e);
+            },
+        };
+    }
+
+    let json_body = json!(my_results);
+
+    Ok(HttpResponse::Ok().content_type("application/json").body(json_body.to_string()))
+}
+```
+
+> And `main` function looks like this
+
+```rust
+#[get("/api/health")]
+async fn hello_world() -> impl Responder {
+    HttpResponse::Ok().body("{\"status\": \"ok\"}")
+}
+
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+
+    // let environment = Option::from(env::var("ENVIRONMENT").unwrap()).unwrap();
+
+    // let home_dir = dirs::home_dir().unwrap().display().to_string();
+
+    let app_env_file = "app.rust.env".to_string();
+
+    let file_path = format!("/etc/secrets/{}", app_env_file);
+
+    dotenv::from_filename(file_path).ok();
+
+    println!("☝️Service Starting");
+
+    let pool = make_db_pool().await;
+
+    std::env::set_var("RUST_LOG", "actix_web=debug");
+    emoji_logger::init();
+
+    let result = HttpServer::new(move || {
+        App::new()
+            .wrap(Logger::default())
+            .app_data(Data::new(pool.clone()))
+            .service(hello_world)
+            .route("/api/v1/fetch_with_query_advanced", web::get().to(get_data_with_advanced_query_4))
+            .route("fetch_1", web::get().to(get_data_1))
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await;
+
+    println!("🚨 Sample Service Stopping");
+
+    result
+}
+```
+
+`Dockerfile`
+
+```dockerfile
+FROM DOCKER-HOST.COM/rust:1.70-alpine
+
+### custom repo-setup
+
+RUN echo "http://MY-REPO-SERVER/alpine/3.18/community" > /etc/apk/repositories
+RUN echo "http://MY-REPO-SERVER/alpine/3.18/main" >> /etc/apk/repositories
+
+RUN apk update && apk upgrade && apk add curl
+RUN apk add pkgconfig
+RUN apk add --no-cache musl-dev openssl-dev build-base
+RUN mkdir -p /etc/secrets
+
+ENV http_proxy=http://SOME-PROXY.SERVER.COM:5050
+ENV https_proxy=http://SOME-PROXY.SERVER.COM:5050
+
+RUN addgroup -S -g 10000 app && adduser -S -D -u 10000 -s /sbin/nologin -h /app/ -G app app
+
+COPY --chown=app:app . /app
+RUN chown -R app:app /app
+USER 10000
+
+WORKDIR /app
+
+RUN cargo new --bin fastapi
+
+RUN rm -rfv ./src
+
+RUN rm -rfv ./target
+
+COPY ./Cargo.toml ./Cargo.toml
+
+COPY ./src ./src
+
+RUN cargo build --release
+
+CMD ["./target/release/fastapi"]
+
+# On Mac OSX
+
+# https://github.com/messense/homebrew-macos-cross-toolchains
+#   brew tap messense/macos-cross-toolchains
+
+# Install aarch64-unknown-linux-gnu Toolchain:
+#   brew install aarch64-unknown-linux-gnu
+
+#   brew install x86_64-linux-gnu-binutils
+#   brew install x86_64-unknown-linux-gnu
+
+# Build for Mac OSX:
+#   cargo build --release
+
+# Export these for compiling for Linux:
+#   export CC_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-gcc;export CXX_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-g++;export AR_x86_64_unknown_linux_gnu=x86_64-unknown-linux-gnu-ar;export CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=x86_64-unknown-linux-gnu-gcc;
+
+# Build for Linux (x86-64 Architexture)
+#   cargo build --release --target=x86_64-unknown-linux-gnu
+
+# Build Image
+#   docker build . -t rust-app:latest
+
+# Stop Running Docker And Remove Docker (Not Image)
+#   docker stop rust-docker-app; docker rm rust-docker-app;
+
+# Stop Running Docker And Remove Docker + Image
+#   docker stop rust-docker-app; docker rm rust-docker-app; docker rmi rust-app;
+
+
+# --------------------------------------------------
+# 
+#  FYI : I'm syncing the code to Linux Machine & Building The Docker Image and Running It There...
+#
+# cd ~/git/rust/fastapi && rsync -avh --stats --progress Dockerfile Cargo.toml src openstack_configuration.yaml root@SOME-UBUNTU-HOST:~/git/rust/fastapi/
+# cd ~/git/rust/fastapi && rsync -avh --stats --progress ~/vault/* root@SOME-UBUNTU-HOST:~/vault/
+#
+# docker build . -t rust-app:latest
+# docker run --platform linux/amd64 --name=rusty -d -v ~/vault:/etc/secrets -p 8080:8080 rust-app:latest;
+#
+# docker stop rusty; docker rm rusty; docker rmi rust-app:latest;
+
+# --------------------------------------------------
 ```
