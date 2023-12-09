@@ -26,6 +26,8 @@ Please have a look the following file for code snippets/samples
 
 [Async Functions And Channels](#async-functions-and-channels)
 
+[Fetch Openstack Keystone Token With HTTP Request Retry](#fetch-openstack-keystone-token-with-http-request-retry)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8117,5 +8119,302 @@ async fn main() {
     });
 
     let _ = tokio::try_join!(producer_handler, consumer_handler);
+}
+```
+
+#### [Fetch Openstack Keystone Token With HTTP Request Retry](#fetch-openstack-keystone-token-with-http-request-retry)
+
+FYI : All of these APIs are documented here
+- https://docs.openstack.org/api-quick-start/
+
+- This piece of code makes http request & fetches openstack keystone token
+- Has http request-retry (with exponential backoff) logic in place (in case the http request fails)
+- Has (async concurrency) for making http requests to multiple-endpoints
+- Openstack Configuration is maintained in a YAML file
+- In case of errors, has a GENERIC error type, which can be extended/modified
+
+Environment Config File
+
+`app.config.env`
+
+```ini
+MY_USER="<SOME_OPENSTACK_USER>"
+MY_PASS="<SOME_OPENSTACK_PASS>"
+```
+
+`openstack_configuration.yaml`
+
+```yaml
+---
+  - region_name: "my-region-001"
+    openstack_user: "my_os_user"
+    openstack_pass: "my_os_pass"
+    http_endpoint: "my-region-001-api-endpoint.company.com"
+    rabbitmq_user: "my_mq_user"
+    rabbitmq_pass: "my_mq_pass"
+    galera_user: "my_galera_user"
+    galera_pass: "my_galera_pass"
+
+  - region_name: "my-region-002"
+    openstack_user: "my_os_user"
+    openstack_pass: "my_os_pass"
+    http_endpoint: "my-region-002-api-endpoint.company.com"
+    rabbitmq_user: "my_mq_user"
+    rabbitmq_pass: "my_mq_pass"
+    galera_user: "my_galera_user"
+    galera_pass: "my_galera_pass"
+
+    ...
+    ...
+    <INSERT MORE REGIONS>
+    ...
+    ...
+```
+
+`src/main.rs`
+
+```rust
+use std::{env, time};
+use reqwest;
+use serde::Deserialize;
+use serde_json::{json, to_string};
+use tokio::time::Duration;
+use tokio::time::{sleep};
+use std::fs::File;
+use std::io::prelude::*;
+use serde_yaml;
+use tokio;
+use futures::stream;
+use futures::{join, select, StreamExt};
+use dotenv;
+
+pub const MAX_RETRIES: u32 = 10;
+
+#[derive(Debug)]
+pub enum GenericError {
+    InternalServerError,
+    SerializationFailed,
+    HttpRequestFailed,
+    EndpointNotFound,
+    TokenNotFound,
+    TenantQueryFailed,
+    HypervisorQueryFailed,
+}
+
+#[derive(Debug)]
+pub struct CustomError {
+    pub err_type: GenericError,
+    pub err_msg: String
+}
+
+
+#[derive(Debug, Deserialize)]
+pub struct OpenstackRegionConfig {
+    pub region_name: String,
+    pub openstack_user: String,
+    pub openstack_pass: String,
+    pub http_endpoint: String,
+    pub rabbitmq_user: String,
+    pub rabbitmq_pass: String,
+}
+
+
+pub async fn get_workspace_data() -> Vec<OpenstackRegionConfig> {
+    /*
+        openstack_configuration.yaml:
+
+        ---
+          - region_name: "region-001"
+            openstack_user: "my_user_1"
+            openstack_pass: "some_thing_xyz_1"
+            http_endpoint: "region-001-endpoint.company.com"
+            rabbitmq_user: "r_user_1"
+            rabbitmq_pass: "some_thing_p_001"
+            galera_user: "my_galera_user_1"
+            galera_pass: "my_galera_pass_1"
+
+          - region_name: "region-002"
+            openstack_user: "my_user_2"
+            openstack_pass: "some_thing_xyz_2"
+            http_endpoint: "region-002-endpoint.company.com"
+            rabbitmq_user: "r_user_2"
+            rabbitmq_pass: "some_thing_p_002"
+            galera_user: "my_galera_user_2"
+            galera_pass: "my_galera_pass_2"
+    */
+
+    // Open the YAML file
+    let mut file = File::open("openstack_configuration.yaml").unwrap();
+    let mut contents = String::new();
+
+    // Read the file content
+    file.read_to_string(&mut contents).unwrap();
+
+    // Deserialize YAML into a Vec<User>
+    let os_items: Vec<OpenstackRegionConfig> = serde_yaml::from_str(&contents).unwrap();
+    os_items
+}
+
+pub async fn get_http_endpoint_for_region(region: &str) -> Option<String> {
+    let openstack_endpoints = get_workspace_data().await;
+    for item in openstack_endpoints {
+        if item.region_name.to_string() == region.to_string() {
+            return Some(item.http_endpoint);
+        }
+    }
+    None
+}
+
+pub async fn get_region_for_http_endpoint(http_endpoint: &str) -> Option<String> {
+    let openstack_endpoints = get_workspace_data().await;
+    for item in openstack_endpoints {
+        if item.http_endpoint.to_string() == http_endpoint.to_string() {
+            return Some(item.region_name);
+        }
+    }
+    None
+}
+
+pub async fn get_token(http_endpoint: &str) -> Result<(String,String), CustomError> {
+    let client = reqwest::Client::new();
+
+    dotenv::from_filename("app.config.env").ok();
+
+    let user = env::var("MY_USER").unwrap();
+    let pass = env::var("MY_PASS").unwrap();
+
+    let payload = json!({
+        "auth": {
+            "identity": {
+                "methods": ["password"],
+                "password": {
+                    "user": {
+                        "name": user,
+                        "domain": {
+                            "id": "default"
+                        },
+                        "password": pass
+                    }
+                }
+            }
+        }
+    });
+
+    let json_string = to_string(&payload).unwrap();
+
+    let mut keystone_token = String::from("");
+
+    let keystone_endpoint = format!("https://{}:5000/v3/auth/tokens", http_endpoint);
+
+    let response = match client.post(keystone_endpoint)
+        .header("content-type", "application/json")
+        .header("accept", "application/json")
+        .body(json_string)
+        .send()
+        .await {
+        Ok(d) => {
+            println!("http response : {:#?}", d);
+            if let Some(header_value) = d.headers().get("X-Subject-Token") {
+                keystone_token = header_value.to_str().unwrap().to_string();
+            } else {
+                let custom_err = CustomError{
+                    err_msg: String::from("Token Header (X-Subject-Token) Not Found"),
+                    err_type: GenericError::InternalServerError
+                };
+                return Err(custom_err)
+            }
+        },
+        Err(e) => {
+            let custom_err = CustomError{
+                err_msg: String::from("Could Not Make HTTP Post Request To Fetch Keystone Token"),
+                err_type: GenericError::HttpRequestFailed
+            };
+            return Err(custom_err)
+        },
+    };
+    Ok((http_endpoint.to_string(),keystone_token))
+}
+
+pub(crate) async fn get_token_with_retry(http_endpoint: &str) -> Option<(String,String)> {
+    let mut backoff: u64 = 1;
+    let mut retries = 20;
+
+    let mut token = String::from("");
+    let mut region = String::from("");
+    loop {
+        match get_token(&http_endpoint).await {
+            Ok(d) => {
+                (region, token) = d;
+                break;
+            }
+            Err(e) => {
+                println!("_REQUEST_KEYSTONE_FAILED (KEYSTONE_TOKEN) : {:#?}", e);
+                retries += 1;
+
+                if retries > MAX_RETRIES {
+                    println!("_MAX_RETRIES_REACHED (KEYSTONE_TOKEN) , EXITING...");
+                    break;
+                }
+
+                println!("_RETRYING (KEYSTONE_TOKEN) IN {} SECOND(S)...", backoff);
+                sleep(Duration::from_secs(backoff)).await;
+
+                // Exponential backoff
+                backoff *= 2;
+            }
+        }
+    }
+    if token == "" {
+        None
+    } else {
+        Some((region.to_string(),token.to_string()))
+    }
+}
+
+pub async fn get_openstack_endpoints() -> Vec<String> {
+    let mut endpoints:Vec<String> = vec![];
+    let openstack_config = get_workspace_data().await;
+    for region_config in openstack_config {
+        endpoints.push(region_config.http_endpoint);
+    }
+    println!("openstack_http_endpoints : {:#?}", endpoints);
+    endpoints
+}
+
+pub async fn get_keystone_token_for_all_regions() -> Vec<Option<(String,String)>> {
+    let now = time::Instant::now();
+    let input_vec = get_openstack_endpoints().await;
+    let input_data: Vec<&str> = input_vec.iter().map(|d| d.as_str()).collect();
+    let input_vec_length = input_data.len();
+    // at any given time, run these many async functions
+    let concurrency = 50;
+    let results: Vec<_> = stream::iter(input_data)
+        .map(get_token_with_retry)
+        .buffer_unordered(concurrency)
+        .collect()
+        .await;
+    let elapsed = now.elapsed().as_secs_f64();
+    println!(
+        "get_keystone_token_for_all_regions() : total time taken : {}",
+        elapsed
+    );
+    results
+}
+
+
+#[tokio::main]
+async fn main() {
+    let keystone_tokens = get_keystone_token_for_all_regions().await;
+
+    for my_token in keystone_tokens {
+        match my_token {
+            None => {}
+            Some(d) => {
+                let (region, token) = d;
+                println!("Region : {} , Keystone Token : {}", region, token);
+            }
+        };
+    };
+
 }
 ```
