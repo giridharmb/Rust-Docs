@@ -24,6 +24,8 @@ Please have a look the following file for code snippets/samples
 
 [Actix REST API With Advanced Query And PostgreSQL Backend](#actix-rest-api-with-advanced-query-and-postgresql-backend)
 
+[Async Functions And Channels](#async-functions-and-channels)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8058,4 +8060,62 @@ CMD ["./target/release/fastapi"]
 # docker stop rusty; docker rm rusty; docker rmi rust-app:latest;
 
 # --------------------------------------------------
+```
+
+#### [Async Functions And Channels](#async-functions-and-channels)
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "async-channels"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+tokio = { version = "1.29.1", features = ["full"] }
+```
+
+`src/main.rs`
+
+```rust
+use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
+async fn producer(tx: mpsc::Sender<i32>) {
+    for i in 0..25 {
+        sleep(Duration::from_millis(200)).await;
+        let send_result = match tx.send(i).await {
+            Ok(d) => {
+                println!("tx.send successful");
+            }
+            Err(e) => {
+                println!("tx.send failed : {:#?}", e);
+            }
+        };
+    }
+}
+
+async fn consumer(mut rx: mpsc::Receiver<i32>) {
+    while let Some(data) = rx.recv().await {
+        println!("consumer : rx.recv : data : {:#}", data);
+    }
+}
+
+#[tokio::main]
+async fn main() {
+
+    let (tx, rx) = mpsc::channel(1);
+
+    let producer_handler = tokio::spawn(async move {
+        producer(tx).await;
+    });
+
+    let consumer_handler = tokio::spawn(async move {
+        consumer(rx).await;
+    });
+
+    let _ = tokio::try_join!(producer_handler, consumer_handler);
+}
 ```
