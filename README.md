@@ -28,6 +28,8 @@ Please have a look the following file for code snippets/samples
 
 [Fetch Openstack Keystone Token With HTTP Request Retry](#fetch-openstack-keystone-token-with-http-request-retry)
 
+[Using Map On ASYNC Functions](#using-map-on-async-functions)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8417,4 +8419,68 @@ async fn main() {
     };
 
 }
+```
+
+#### [Using Map On ASYNC Functions](#using-map-on-async-functions)
+
+> ASYNC Functions
+
+```rust
+fn get_sanitized_string(text: &str) -> String {
+    let re = Regex::new(r"[^a-zA-Z0-9-._@/,;:\s]+").unwrap();
+    let result = re.replace_all(&text, "");
+    result.to_string()
+}
+
+async fn sanitize_string(input: &str) -> String {
+    input.chars()
+        .filter(|&c| c.is_ascii_alphanumeric() || "_./-@,#:;".contains(c))
+        .collect()
+}
+
+async fn remove_leading_trailing_characters(input: &str) -> String {
+    input.trim_start_matches(",").trim_end_matches(",").to_string()
+}
+
+async fn replace_multiple_characters(input: &str) -> String {
+    let re = Regex::new(r",+").unwrap();
+    re.replace_all(input, ",").to_string()
+}
+
+async fn split_string(input: &str, split_char: &str) -> Vec<String> {
+    input.split(split_char).map(|s| s.to_string()).collect()
+}
+
+async fn remove_leading_and_trailing_spaces(my_str: &str) -> String {
+    my_str.trim_start().trim_end().to_string()
+}
+```
+
+> Usage for `map`
+
+```rust
+let mut search_strings:Vec<String> = vec![];
+let mut sanitized_search_strings: Vec<String> = vec![];
+let mut search_string_for_reference = "".to_string();
+let mut search_strings_with_leading_and_trailing_spaces_removed = vec![];
+
+/* --------------------------------------------------------------------- */
+
+let futures_1: Vec<_> = search_strings.iter().map(|s| async {
+    remove_leading_and_trailing_spaces(s).await
+}).collect();
+search_strings_with_leading_and_trailing_spaces_removed = futures::future::join_all(futures_1).await;
+
+println!("@ length of search_strings_with_leading_and_trailing_spaces_removed >> {}", search_strings_with_leading_and_trailing_spaces_removed.len());
+
+/* --------------------------------------------------------------------- */
+
+let futures_2: Vec<_> = search_strings_with_leading_and_trailing_spaces_removed.iter().map(|s| async {
+    sanitize_string(s).await
+}).collect();
+sanitized_search_strings = futures::future::join_all(futures_2).await;
+
+println!("@ length of sanitized_search_strings >> {}", sanitized_search_strings.len());
+
+/* --------------------------------------------------------------------- */
 ```
