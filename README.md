@@ -14,6 +14,8 @@ Please have a look the following file for code snippets/samples
 
 #### [File Uploader : Server And Client](https://github.com/giridharmb/rust-app1/blob/master/FileUploader.md)
 
+#### [Actix Web & PostgreSQL DB & jQuery Data Table With Server Side Rendering (Pagination)](https://github.com/giridharmb/rust-app1/blob/master/Rust-Data-Table.md)
+
 [Openstack Hypervisor List With HTTP Retry](#openstack-hypervisor-list-with-http-retry)
 
 [Actix REST API With PostgreSQL Backend](#actix-rest-api-with-postgresql-backend)
