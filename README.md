@@ -8493,12 +8493,12 @@ println!("@ length of sanitized_search_strings >> {}", sanitized_search_strings.
 
 If the following columns in `PostgreSQL` are of type `column_name::text`,<br/>
 then we can create a PostgreSQL `view`, <br/>
-which will convert the `text` (in `materilized view`) to `integer` (in the `view`).
+which will convert the `text` (in `materialized view`) to `integer` (in the `view`).
 
-- cloud (this will be text in the view)
-- vcpus (this will be integer in the view)
-- vcpus_used (this will be integer in the view)
-- running_vms (this will be integer in the view)
+- cloud        (this will be text in the view)
+- vcpus        (this will be integer in the view)
+- vcpus_used   (this will be integer in the view)
+- running_vms  (this will be integer in the view)
 
 ```rust
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -8520,6 +8520,32 @@ CREATE VIEW view_table1 AS
         CASE WHEN vcpus_used ~ '^[0-9]+$' THEN vcpus_used::integer ELSE 0 END as vcpus_used,
         CASE WHEN running_vms ~ '^[0-9]+$' THEN running_vms::integer ELSE 0 END as running_vms
     FROM public.table1_materialized_view;
+```
+
+> Original `materialized view`
+
+```sql
+ \d public.table1_materialized_view
+          Materialized view "public.table1_materialized_view"
+        Column         | Type | Collation | Nullable | Default
+-----------------------+------+-----------+----------+---------
+ cloud                 | text |           |          |
+ vcpus                 | text |           |          |
+ vcpus_used            | text |           |          |
+ running_vms           | text |           |          |
+```
+
+> Newly Created `view` from `materialized view`
+
+```sql
+\d view_table1
+                 View "public.view_table1"
+        Column         |  Type   | Collation | Nullable | Default
+-----------------------+---------+-----------+----------+---------
+ cloud                 | text    |           |          |
+ vcpus                 | integer |           |          |
+ vcpus_used            | integer |           |          |
+ running_vms           | integer |           |          |
 ```
 
 Note-1 : `integer` type in `PostgreSQL` will map to `i32` in Rust's `struct {...}`.
