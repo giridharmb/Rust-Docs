@@ -32,6 +32,8 @@ Please have a look the following file for code snippets/samples
 
 [Using Map On ASYNC Functions](#using-map-on-async-functions)
 
+[Struct And PostgreSQL Table Mapping](#struct-and-postgresql-table-mapping)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8486,3 +8488,40 @@ println!("@ length of sanitized_search_strings >> {}", sanitized_search_strings.
 
 /* --------------------------------------------------------------------- */
 ```
+
+#### [Struct And PostgreSQL Table Mapping](#struct-and-postgresql-table-mapping)
+
+If the following columns in `PostgreSQL` are of type `column_name::text`,<br/>
+then we can create a PostgreSQL `view`, <br/>
+which will convert the `text` (in `materilized view`) to `integer` (in the `view`).
+
+- cloud (this will be text in the view)
+- vcpus (this will be integer in the view)
+- vcpus_used (this will be integer in the view)
+- running_vms (this will be integer in the view)
+
+```rust
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct Data {
+    pub cloud: String,
+    pub vcpus: i32,
+    pub vcpus_used: i32,
+    pub running_vms: i32,
+}
+```
+
+Create PostgreSQL `view` from `materialized view`.
+
+```sql
+CREATE VIEW view_table1 AS
+    SELECT
+        cloud::text as cloud,
+        CASE WHEN vcpus ~ '^[0-9]+$' THEN vcpus::integer ELSE 0 END as vcpus,
+        CASE WHEN vcpus_used ~ '^[0-9]+$' THEN vcpus_used::integer ELSE 0 END as vcpus_used,
+        CASE WHEN running_vms ~ '^[0-9]+$' THEN running_vms::integer ELSE 0 END as running_vms
+    FROM public.table1_materialized_view;
+```
+
+Note-1 : `integer` type in `PostgreSQL` will map to `i32` in Rust's `struct {...}`.
+
+Note-2 : In the view `view_table1` above, if the column cannot be converted to `integer`, it will default to integer value of `0`.
