@@ -34,6 +34,10 @@ Please have a look the following file for code snippets/samples
 
 [Struct And PostgreSQL Table Mapping](#struct-and-postgresql-table-mapping)
 
+[Using ARC To Clone Objects](#using-arc-to-clone-objects)
+
+[Measure PostgreSQL Read Write Performance](#measure-postgresql-read-write-performance)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8551,3 +8555,192 @@ CREATE VIEW view_table1 AS
 Note-1 : `integer` type in `PostgreSQL` will map to `i32` in Rust's `struct {...}`.
 
 Note-2 : In the view `view_table1` above, if the column cannot be converted to `integer`, it will default to integer value of `0`.
+
+#### [Using ARC To Clone Objects](#using-arc-to-clone-objects)
+
+In a scenario where `client.clone()` fails, becuase `client` does not implement `.clone()` method,
+then we can do something like this >>
+
+The error you’re encountering likely stems from trying to clone the client object directly, 
+which is not possible with the tokio-postgres::Client type because it does not implement 
+the Clone trait. This trait is not implemented because each Client instance 
+maintains its own connection pool and state.
+
+A common pattern to handle this in Rust when working with tokio-postgres and 
+needing to perform concurrent database operations is to use an 
+Arc (Atomic Reference Counting) to share the client among multiple tasks. 
+Arc safely allows multiple owners of the same data by ensuring memory safety with atomic operations.
+
+Here’s how you can adjust your program to use Arc for sharing the Client across tasks:
+
+Adjusted Program for Concurrent Operations
+
+First, make sure to include Arc in your use declarations:
+
+```rust
+use std::sync::Arc;
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let (client, connection) =
+        tokio_postgres::connect("host=localhost user=postgres password=your_password dbname=testdb", NoTls).await?;
+
+    let client = Arc::new(client); // Wrap the client with Arc
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    // Now, when you need to use the client in an async task, clone the Arc
+    let write_handles: Vec<_> = (0..10).map(|_| {
+        let client = Arc::clone(&client); // Clone the Arc, not the client itself
+        tokio::spawn(async move {
+            // Your database operation using client
+        })
+    }).collect();
+
+    // Your code for write and read operations follows, making sure to clone the Arc each time you pass the client to a new task
+}
+```
+
+Complete Code Sample To Measure PostgreSQL Read/Write Performance Below (Uses ARC to clone `client`) >>
+
+#### [Measure PostgreSQL Read Write Performance](#measure-postgresql-read-write-performance)
+
+- Payload Size 10KB
+- Parallel Writes
+- Parallel Reads (once writes are done)
+- 1000 Threads
+- ARC to clone `client` object
+
+Create Database And Table First
+
+```bash
+psql -P expanded=auto -h PG_IP_ADDRESS -U perfuser perfdb
+```
+
+```sql
+CREATE DATABASE perfdb;
+
+-- Switch to the created database
+\c perfdb;
+
+-- Create a table
+CREATE TABLE test_data ( id SERIAL PRIMARY KEY, data TEXT NOT NULL );
+```
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "pg-performance"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+chrono = "0.4.33"
+rand = "0.8.5"
+tokio = { version = "1.35.1" , features = ["full"]}
+tokio-postgres = "0.7.10"
+```
+
+`src/main.rs`
+
+```rust
+use chrono::prelude::*;
+use tokio_postgres::{NoTls, Error};
+use rand::{distributions::Alphanumeric, Rng};
+use tokio::time::{sleep, Duration};
+use tokio::time::interval;
+use std::sync::Arc;
+
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let conn_str = "host=PG_IP_ADDRESS user=perfuser password=PG_PASS dbname=perfdb";
+    let (client, connection) = tokio_postgres::connect(conn_str, NoTls).await.unwrap();
+    let client = Arc::new(client);
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    println!("database connection initialized...");
+
+    let total_operations = 1000; // Number of concurrent operations
+
+    println!("starting write operations...");
+
+    let payload_size = 10240;
+
+    // Concurrent Writes
+    let write_start = Utc::now();
+    let mut write_handles = Vec::new();
+    for iteration in 0..total_operations {
+        println!("write >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let data: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(payload_size) // 5KB of data
+            .map(char::from)
+            .collect();
+
+        let handle = tokio::spawn(async move {
+            let _ = client.execute("INSERT INTO test_data (data) VALUES ($1)", &[&data]).await;
+        });
+        write_handles.push(handle);
+    }
+
+    // Await all write operations to complete
+    for handle in write_handles {
+        let _ = handle.await;
+    }
+    let write_end = Utc::now();
+    let time_total_writes = (write_end - write_start).num_milliseconds();
+
+    println!("sleeping for sometime...");
+
+    // Delay to ensure writes are committed
+    sleep(Duration::from_secs(5)).await;
+
+    println!("starting read operations...");
+
+    // Concurrent Reads
+    let read_start = Utc::now();
+    let mut read_handles = Vec::new();
+    for iteration in 0..total_operations {
+        println!("read >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let handle = tokio::spawn(async move {
+            let _ = client.query("SELECT data FROM test_data ORDER BY id DESC LIMIT 1", &[]).await;
+        });
+        read_handles.push(handle);
+    }
+
+    println!("both writes and reads are done.");
+
+    // Await all read operations to complete
+    for handle in read_handles {
+        let _ = handle.await;
+    }
+    let read_end = Utc::now();
+
+    let time_total_reads = (read_end - read_start).num_milliseconds();
+
+    println!("\n# Payload (Size) Of Each Record: {} bytes", payload_size);
+
+    println!("\n# Total Parallel Threads (Write+Read): {}", total_operations);
+
+    println!("\n# Concurrent write duration: {} ms", time_total_writes);
+
+    println!("\n# Concurrent read duration: {} ms", time_total_reads);
+
+    Ok(())
+}
+```
