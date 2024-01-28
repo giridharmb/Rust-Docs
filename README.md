@@ -8744,3 +8744,170 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 ```
+
+#### Connect To Azure PostgreSQL Over SSL
+
+- Connect to PostgreSQL DB Over `SSL`
+- Below code connects to Azure PostgreSQL (without SSL it will `not` connect)
+
+```shell
+psql -P expanded=auto -h my-azure-database-region-01.postgres.database.azure.com -U my-read-write-user@my-azure-database-region-01 postgres
+```
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "pg-performance"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-trait = "0.1.77"
+chrono = "0.4.33"
+deadpool-postgres = "0.12.1"
+dotenv = "0.15.0"
+native-tls = "0.2.11"
+openssl = "0.10.63"
+postgres-openssl = "0.5.0"
+rand = "0.8.5"
+derive_more = "0.99.17"
+tokio = { version = "1.35.1" , features = ["full"]}
+tokio-native-tls = "0.3.1"
+tokio-postgres = "0.7.10"
+tokio-postgres-native-tls = "0.1.0-rc.1"
+tokio-postgres-openssl = "0.1.0-rc.1"
+serde = { version = "1.0.196", features = ["derive"] }
+tokio-postgres-rustls = "0.11.1"
+rustls = "0.22.2"
+config = "0.13.4"
+anyhow = "1.0.79"
+```
+
+`app.config.env`
+
+```ini
+USERNAME="my-read-write-user@my-azure-database-region-01"
+PASSWORD="some-random-text"
+HOSTNAME="my-azure-database-region-01.postgres.database.azure.com"
+DBNAME="postgres"
+PORT="5432"
+```
+
+`src/main.rs`
+
+```rust
+use chrono::prelude::*;
+use tokio_postgres::{NoTls, Error};
+use rand::{distributions::Alphanumeric, Rng};
+use tokio::time::{sleep, Duration};
+use tokio::time::interval;
+use std::sync::Arc;
+use openssl::ssl::{SslConnector, SslMethod};
+use postgres_openssl::MakeTlsConnector;
+
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+
+    dotenv::from_filename("app.config.env").ok().unwrap();
+
+    let pg_host = std::env::var("HOSTNAME").unwrap();
+    let password = std::env::var("PASSWORD").unwrap();
+    let username = std::env::var("USERNAME").unwrap();
+    let db_name = std::env::var("DBNAME").unwrap();
+    let port = std::env::var("PORT").unwrap();
+
+
+    let conn_str = format!("host={} user={} password={} dbname={} sslmode=require",
+        pg_host,
+        username,
+        password,
+        db_name
+    );
+
+    let builder = SslConnector::builder(SslMethod::tls()).unwrap();
+    let tls_connector = MakeTlsConnector::new(builder.build());
+
+    let (client, connection) = tokio_postgres::connect(conn_str.as_str(), tls_connector).await.unwrap();
+    let client = Arc::new(client);
+
+    tokio::spawn(async move {
+        if let Err(e) = connection.await {
+            eprintln!("connection error: {}", e);
+        }
+    });
+
+    println!("database connection initialized...");
+
+    let total_operations = 1000; // Number of concurrent operations
+
+    println!("starting write operations...");
+
+    let payload_size = 10240;
+
+    // Concurrent Writes
+    let write_start = Utc::now();
+    let mut write_handles = Vec::new();
+    for iteration in 0..total_operations {
+        println!("write >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let data: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(payload_size) // 5KB of data
+            .map(char::from)
+            .collect();
+
+        let handle = tokio::spawn(async move {
+            let _ = client.execute("INSERT INTO test_data (data) VALUES ($1)", &[&data]).await;
+        });
+        write_handles.push(handle);
+    }
+
+    // Await all write operations to complete
+    for handle in write_handles {
+        let _ = handle.await;
+    }
+    let write_end = Utc::now();
+    let time_total_writes = (write_end - write_start).num_milliseconds();
+
+    println!("sleeping for sometime...");
+
+    // Delay to ensure writes are committed
+    sleep(Duration::from_secs(5)).await;
+
+    println!("starting read operations...");
+
+    // Concurrent Reads
+    let read_start = Utc::now();
+    let mut read_handles = Vec::new();
+    for iteration in 0..total_operations {
+        println!("read >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let handle = tokio::spawn(async move {
+            let _ = client.query("SELECT data FROM test_data ORDER BY id DESC LIMIT 1", &[]).await;
+        });
+        read_handles.push(handle);
+    }
+
+    println!("both writes and reads are done.");
+
+    // Await all read operations to complete
+    for handle in read_handles {
+        let _ = handle.await;
+    }
+    let read_end = Utc::now();
+
+    let time_total_reads = (read_end - read_start).num_milliseconds();
+
+    println!("\n# Payload (Size) Of Each Record: {} bytes", payload_size);
+
+    println!("\n# Total Parallel Threads (Write+Read): {}", total_operations);
+
+    println!("\n# Concurrent write duration: {} ms", time_total_writes);
+
+    println!("\n# Concurrent read duration: {} ms", time_total_reads);
+
+    Ok(())
+}
+```
