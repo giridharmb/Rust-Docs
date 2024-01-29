@@ -38,6 +38,8 @@ Please have a look the following file for code snippets/samples
 
 [Measure PostgreSQL Read Write Performance](#measure-postgresql-read-write-performance)
 
+[Factory Design Pattern V1](#factory-design-pattern-v1)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -8911,3 +8913,116 @@ async fn main() -> Result<(), Error> {
     Ok(())
 }
 ```
+
+#### [Factory Design Pattern V1](#factory-design-pattern-v1)
+
+Perform CRUD Operation on MongoDB & PostgreSQL
+
+Notes
+
+```
+The factory design pattern in Rust can be used to abstract the 
+creation of objects that perform CRUD operations on different 
+databases like MongoDB or PostgreSQL. 
+
+The idea is to define a common trait for CRUD operations and 
+then implement this trait for each specific database. 
+The factory function or method then returns a concrete 
+implementation based on the requested database type.
+```
+
+- The actual implementation of CRUD operations for MongoDB and PostgreSQL will depend on their respective client libraries and your application's specific requirements.
+- This example uses trait objects (`Box<dyn CrudOperations>`) to achieve polymorphism.
+- Trait objects are a way to achieve runtime polymorphism in Rust.
+- Ensure you have the necessary dependencies for MongoDB and PostgreSQL clients in your Cargo.toml and set up the actual database connections and operations according to your application needs.
+- The factory pattern is useful when the creation logic is complex or when you want to abstract away the instantiation details from the client code.
+- In this example, it helps to switch between different database backends easily.
+
+```rust
+trait CrudOperations {
+    fn create(&self, data: &str);
+    fn read(&self, id: u32) -> String;
+    fn update(&self, id: u32, data: &str);
+    fn delete(&self, id: u32);
+}
+```
+
+```rust
+struct MongoDB;
+
+impl CrudOperations for MongoDB {
+    fn create(&self, data: &str) {
+        println!("MongoDB create: {}", data);
+        // Implement MongoDB create operation
+    }
+    fn read(&self, id: u32) -> String {
+        println!("MongoDB read: {}", id);
+        // Implement MongoDB read operation
+        "MongoDB data".to_string()
+    }
+    fn update(&self, id: u32, data: &str) {
+        println!("MongoDB update: {}", id);
+        // Implement MongoDB update operation
+    }
+    fn delete(&self, id: u32) {
+        println!("MongoDB delete: {}", id);
+        // Implement MongoDB delete operation
+    }
+}
+```
+
+```rust
+struct PostgreSQL;
+
+impl CrudOperations for PostgreSQL {
+    fn create(&self, data: &str) {
+        println!("PostgreSQL create: {}", data);
+        // Implement PostgreSQL create operation
+    }
+    fn read(&self, id: u32) -> String {
+        println!("PostgreSQL read: {}", id);
+        // Implement PostgreSQL read operation
+        "PostgreSQL data".to_string()
+    }
+    fn update(&self, id: u32, data: &str) {
+        println!("PostgreSQL update: {}", id);
+        // Implement PostgreSQL update operation
+    }
+    fn delete(&self, id: u32) {
+        println!("PostgreSQL delete: {}", id);
+        // Implement PostgreSQL delete operation
+    }
+}
+```
+
+```rust
+enum DbType {
+    MongoDB,
+    PostgreSQL,
+}
+
+fn db_factory(db_type: DbType) -> Box<dyn CrudOperations> {
+    match db_type {
+        DbType::MongoDB => Box::new(MongoDB),
+        DbType::PostgreSQL => Box::new(PostgreSQL),
+    }
+}
+```
+
+```rust
+fn main() {
+    let db = db_factory(DbType::MongoDB);
+    db.create("test data");
+    let data = db.read(1);
+    db.update(1, "updated data");
+    db.delete(1);
+
+    let db = db_factory(DbType::PostgreSQL);
+    db.create("test data");
+    let data = db.read(1);
+    db.update(1, "updated data");
+    db.delete(1);
+}
+```
+
+
