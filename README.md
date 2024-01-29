@@ -40,6 +40,8 @@ Please have a look the following file for code snippets/samples
 
 [Factory Design Pattern V1](#factory-design-pattern-v1)
 
+[Write CSV File](#write-csv-file)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9025,4 +9027,61 @@ fn main() {
 }
 ```
 
+#### [Write CSV File](#write-csv-file)
 
+`Cargo.toml`
+
+```toml
+[dependencies]
+csv = "1.1"
+serde = { version = "1.0", features = ["derive"] }
+```
+
+`src/main.rs`
+
+```rust
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct Record {
+    field1: String,
+    field2: u32,
+    // Add more fields as needed
+}
+
+use csv::Writer;
+use std::error::Error;
+use std::fs::File;
+
+fn write_csv() -> Result<(), Box<dyn Error>> {
+    // Create a writer from a file
+    let file = File::create("output.csv")?;
+    let mut writer = Writer::from_writer(file);
+
+    // Create some sample data
+    let records = vec![
+        Record {
+            field1: "Value1".to_string(),
+            field2: 123,
+        },
+        Record {
+            field1: "Value2".to_string(),
+            field2: 456,
+        },
+        // Add more records as needed
+    ];
+
+    // Write records to CSV
+    for record in records {
+        writer.serialize(record)?;
+    }
+
+    writer.flush()?;
+    Ok(())
+}
+
+fn main() -> Result<(), Box<dyn Error>> {
+    write_csv()?;
+    Ok(())
+}
+```
