@@ -9058,6 +9058,8 @@ fn write_csv() -> Result<(), Box<dyn Error>> {
     let file = File::create("output.csv")?;
     let mut writer = Writer::from_writer(file);
 
+    writer.write_record(&["field1", "field2"])?;
+
     // Create some sample data
     let records = vec![
         Record {
