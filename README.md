@@ -8749,6 +8749,394 @@ async fn main() -> Result<(), Error> {
 }
 ```
 
+#### Version 2.0 : Measure PostgreSQL Performance & Export Results To CSV
+
+- Using TRAIT
+- CSV Export Of Performance Results
+- Uses Multiple Threads & Multiple Payload Size
+- Multiple Databases (Ex: Azure DB Over SSL or Local DB Over Non-SSL)
+
+`Cargo.toml`
+
+```toml
+[package]
+name = "pg-performance"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+async-trait = "0.1.77"
+chrono = "0.4.33"
+deadpool-postgres = "0.12.1"
+dotenv = "0.15.0"
+native-tls = "0.2.11"
+openssl = "0.10.63"
+postgres-openssl = "0.5.0"
+rand = "0.8.5"
+derive_more = "0.99.17"
+tokio = { version = "1.35.1" , features = ["full"]}
+tokio-native-tls = "0.3.1"
+tokio-postgres = "0.7.10"
+tokio-postgres-native-tls = "0.1.0-rc.1"
+tokio-postgres-openssl = "0.1.0-rc.1"
+serde = { version = "1.0.196", features = ["derive"] }
+tokio-postgres-rustls = "0.11.1"
+rustls = "0.22.2"
+config = "0.13.4"
+anyhow = "1.0.79"
+csv = "1.3.0"
+```
+
+> Important : Create This File
+
+`app.config.env`
+
+```ini
+USERNAME_V1="azure-user-001-rw@my-azure-db-region-001"
+PASSWORD_V1="some-random-text"
+HOSTNAME_V1="my-azure-db-region-001.postgres.database.azure.com"
+DBNAME_V1="postgres"
+PORT_V1="5432"
+PG_NAME_V1="my-pg-001"
+
+USERNAME_V2="some-user-002"
+PASSWORD_V2="some-random-text"
+HOSTNAME_V2="my-postgresql-v1.company.com"
+DBNAME_V2="some-other-db"
+PORT_V2="5432"
+PG_NAME_V2="my-pg-002"
+```
+
+`src/main.rs`
+
+```rust
+use chrono::prelude::*;
+use tokio_postgres::{NoTls, Error, Row, Client};
+use rand::{distributions::Alphanumeric, Rng};
+use tokio::time::{sleep, Duration};
+use tokio::time::interval;
+use std::sync::Arc;
+use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod};
+use postgres_openssl::MakeTlsConnector;
+use serde::Serialize;
+use std::error::Error as StdError;
+use std::fs::File;
+use csv::Writer;
+use async_trait::async_trait;
+
+#[async_trait]
+trait PerformanceTrait {
+    async fn measure_performance(&self) -> Result<(),Error>;
+    async fn get_client(&self) -> Arc<Client>;
+}
+
+#[derive(Serialize)]
+struct Database {
+    pg_host: String,
+    pg_password: String,
+    pg_username: String,
+    pg_db_name: String,
+    pg_port: String,
+    ssl: bool,
+    pg_name: String,
+}
+
+#[derive(Serialize)]
+struct PerformanceResults {
+    num_threads: i64,
+    each_record_size: i64,
+    total_data_written_bytes: i64,
+    total_data_written_kb: f64,
+    total_data_written_mb: f64,
+    total_time_milli_secs_for_parallel_writes: i64,
+    total_time_milli_secs_for_parallel_reads: i64,
+    average_time_for_each_write: f64,
+    average_time_for_each_read: f64,
+}
+
+#[async_trait]
+impl PerformanceTrait for Database {
+    async fn measure_performance(&self) -> Result<(),Error> {
+        let my_db = Database {
+            pg_host: self.pg_host.to_string(),
+            pg_password: self.pg_password.to_string(),
+            pg_username: self.pg_username.to_string(),
+            pg_db_name: self.pg_db_name.to_string(),
+            pg_port: self.pg_port.to_string(),
+            ssl: self.ssl,
+            pg_name: self.pg_name.to_string(),
+        };
+
+        let my_client = my_db.get_client().await;
+
+        let mut performance_results = vec![];
+
+        let threads_start = 1;
+        let threads_max = 1000;
+        let threads_step = 200;
+
+        let payload_start = 1024;
+        let payload_max = 20480;
+        let payload_step = 5120;
+
+
+        for num_of_threads in (threads_start..=threads_max).step_by(threads_step) {
+            for payload_size in (payload_start..=payload_max).step_by(payload_step) {
+                let perf_result = measure_performance(&my_client, num_of_threads, payload_size).await?;
+                performance_results.push(perf_result);
+            }
+        }
+
+        let out_file = format!("performance_results_{}.csv", &self.pg_name);
+
+        match write_results_to_csv(out_file.as_str(), performance_results).await {
+            Ok(d) => {
+                format!("benchmarking done, wrote results to {} !",out_file);
+            }
+            Err(e) => {
+                format!("error writing to csv file : {}  : {}",out_file, e.to_string());
+            }
+        };
+        Ok(())
+
+    }
+
+    async fn get_client(&self) -> Arc<Client> {
+        let pg_host = &self.pg_host.clone();
+        let password = &self.pg_password.clone();
+        let username = &self.pg_username.clone();
+        let db_name = &self.pg_db_name.clone();
+        let port = &self.pg_port.clone();
+        let ssl = &self.ssl.clone();
+
+        let mut conn_str = "".to_string();
+
+        let mut builder = SslConnector::builder(SslMethod::tls()).unwrap();
+        let tls_connector = MakeTlsConnector::new(builder.build());
+
+        return if self.ssl {
+            // connect over SSL
+            conn_str = format!("host={} user={} password={} dbname={} sslmode=require",
+                               pg_host,
+                               username,
+                               password,
+                               db_name
+            );
+
+            let (client, connection) = tokio_postgres::connect(conn_str.as_str(), tls_connector).await.unwrap();
+            let client = Arc::new(client);
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    eprintln!("connection error: {}", e);
+                }
+            });
+            client
+        } else {
+            // connect (without) SSL
+
+            conn_str = format!("host={} user={} password={} dbname={}",
+                               pg_host,
+                               username,
+                               password,
+                               db_name
+            );
+
+            let (client, connection) = tokio_postgres::connect(conn_str.as_str(), NoTls).await.unwrap();
+            let client = Arc::new(client);
+            tokio::spawn(async move {
+                if let Err(e) = connection.await {
+                    eprintln!("connection error: {}", e);
+                }
+            });
+            client
+        };
+    }
+}
+
+
+
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+
+    // get the environment variables
+
+    dotenv::from_filename("app.config.env").ok().unwrap();
+
+    let pg_host_v1 = std::env::var("HOSTNAME_V1").unwrap();
+    let password_v1 = std::env::var("PASSWORD_V1").unwrap();
+    let username_v1 = std::env::var("USERNAME_V1").unwrap();
+    let db_name_v1 = std::env::var("DBNAME_V1").unwrap();
+    let port_v1 = std::env::var("PORT_V1").unwrap();
+    let pg_name_v1 = std::env::var("PG_NAME_V1").unwrap();
+
+    let pg_host_v2 = std::env::var("HOSTNAME_V2").unwrap();
+    let password_v2 = std::env::var("PASSWORD_V2").unwrap();
+    let username_v2 = std::env::var("USERNAME_V2").unwrap();
+    let db_name_v2 = std::env::var("DBNAME_V2").unwrap();
+    let port_v2 = std::env::var("PORT_V2").unwrap();
+    let pg_name_v2 = std::env::var("PG_NAME_V2").unwrap();
+
+    let db_1 = Database {
+        pg_host: pg_host_v1.to_string(),
+        pg_password: password_v1.to_string(),
+        pg_username: username_v1.to_string(),
+        pg_db_name: db_name_v1.to_string(),
+        pg_port: port_v1.to_string(),
+        ssl: true,
+        pg_name: pg_name_v1.to_string(),
+    };
+
+    let db_2 = Database {
+        pg_host: pg_host_v2.to_string(),
+        pg_password: password_v2.to_string(),
+        pg_username: username_v2.to_string(),
+        pg_db_name: db_name_v2.to_string(),
+        pg_port: port_v2.to_string(),
+        ssl: false,
+        pg_name: pg_name_v2.to_string(),
+    };
+
+
+    // measure performance for db_1
+
+    db_1.measure_performance().await?;
+
+    // measure performance for db_2
+
+    db_2.measure_performance().await?;
+
+    Ok(())
+}
+
+async fn initialize_table(client: &tokio_postgres::Client) -> Result<(), Error> {
+    return match client.query("CREATE TABLE IF NOT EXISTS test_data ( id SERIAL PRIMARY KEY, data TEXT NOT NULL );", &[]).await {
+        Ok(d) => {
+            Ok(())
+        },
+        Err(e) => {
+            println!("error : could not create table !");
+            println!("{:#?}", e);
+            return Err(e)
+        },
+    };
+}
+
+async fn measure_performance(client: &Arc<Client>, num_threads: i64, payload_size: i64) -> Result<PerformanceResults, Error> {
+    initialize_table(&client).await?;
+
+    println!("database connection initialized...");
+
+    println!("starting write operations...");
+
+    // Concurrent Writes
+    let write_start = Utc::now();
+    let mut write_handles = Vec::new();
+    for iteration in 0..num_threads {
+        // println!("write >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let data: String = rand::thread_rng()
+            .sample_iter(&Alphanumeric)
+            .take(payload_size as usize) // 5KB of data
+            .map(char::from)
+            .collect();
+
+        let handle = tokio::spawn(async move {
+            let _ = client.execute("INSERT INTO test_data (data) VALUES ($1)", &[&data]).await;
+        });
+        write_handles.push(handle);
+    }
+
+    // Await all write operations to complete
+    for handle in write_handles {
+        let _ = handle.await;
+    }
+    let write_end = Utc::now();
+    let time_total_writes = (write_end - write_start).num_milliseconds();
+
+    let average_write_per_record = time_total_writes as f64/ num_threads as f64;
+
+    println!("sleeping for sometime...");
+
+    // Delay to ensure writes are committed
+    sleep(Duration::from_secs(5)).await;
+
+    println!("starting read operations...");
+
+    // Concurrent Reads
+    let read_start = Utc::now();
+    let mut read_handles = Vec::new();
+    for iteration in 0..num_threads {
+        // println!("read >> iteration : {}", iteration);
+        let client = Arc::clone(&client);
+        let handle = tokio::spawn(async move {
+            let _ = client.query("SELECT data FROM test_data ORDER BY id DESC LIMIT 1", &[]).await;
+        });
+        read_handles.push(handle);
+    }
+
+    println!("\n# Both writes and reads are done.");
+
+    // Await all read operations to complete
+    for handle in read_handles {
+        let _ = handle.await;
+    }
+    let read_end = Utc::now();
+
+    let time_total_reads = (read_end - read_start).num_milliseconds();
+
+    let average_read_per_record = time_total_reads as f64/ num_threads as f64;
+
+    println!("\n# Payload (Size) Of Each Record: {} bytes", payload_size);
+
+    let total_bytes = payload_size * num_threads;
+
+    let total_kb = total_bytes as f64 / 1024.0;
+
+    let total_mb = total_kb as f64 / 1024.0;
+
+    println!("\n# Total Data (Written to DB + Read back from DB) : Payload Size (Each Record) : ({}) bytes , Total Bytes ({}) byes / {} KB / {} MB", payload_size, total_bytes, total_kb, total_mb);
+
+    println!("\n# Total Parallel Threads (Write+Read): {}", num_threads);
+
+    println!("\n# Concurrent write duration: {} ms", time_total_writes);
+
+    println!("\n# Concurrent read duration: {} ms", time_total_reads);
+
+    println!("\n# Average Time For Write : {} ms", average_write_per_record);
+
+    println!("\n# Average Time For Read : {} ms", average_read_per_record);
+
+    let results = PerformanceResults{
+        num_threads,
+        each_record_size: payload_size,
+        total_data_written_bytes: total_bytes,
+        total_data_written_kb: total_kb,
+        total_data_written_mb: total_mb,
+        total_time_milli_secs_for_parallel_writes: time_total_writes,
+        total_time_milli_secs_for_parallel_reads: time_total_reads,
+        average_time_for_each_write: average_write_per_record,
+        average_time_for_each_read: average_read_per_record,
+    };
+
+    Ok(results)
+}
+
+async fn write_results_to_csv(csv_file: &str, records: Vec<PerformanceResults>) -> Result<(), Box<dyn StdError>> {
+    let mut file = File::create(csv_file)?;
+    let mut writer = Writer::from_writer(file);
+
+    for record in records {
+        writer.serialize(record)?;
+    }
+
+    writer.flush()?;
+
+    Ok(())
+}
+```
+
 #### Connect To Azure PostgreSQL Over SSL
 
 - Connect to PostgreSQL DB Over `SSL`
