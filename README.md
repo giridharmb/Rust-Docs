@@ -46,7 +46,7 @@ Please have a look the following file for code snippets/samples
 
 [Async Trait](#async-trait)
 
-[Use Of ARC - Atomic Reference Counted](#use-of-arc)
+[Use Of ARC - Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
 
 <hr/>
 
@@ -9510,7 +9510,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-#### [Async Trait](#async-trait)
+#### [Use Of ARC - Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
 
 `Cargo.toml`
 
