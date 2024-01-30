@@ -9510,7 +9510,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-#### [Use Of ARC - Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
+#### [Use Of ARC Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
 
 `Cargo.toml`
 
