@@ -9510,7 +9510,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 ```
 
-#### [Use Of ARC Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
+#### [Async Trait](#async-trait)
 
 `Cargo.toml`
 
@@ -9581,7 +9581,7 @@ impl MyTrait for MyStruct {
 
 With these steps, you can effectively create and utilize asynchronous methods in your Rust applications, allowing for concurrent and parallel task execution.
 
-#### [Use Of ARC - Atomic Reference Counted](#use-of-arc)
+#### [Use Of ARC Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
 
 In Rust, when you have an `Arc<Client>`` and you want to access the Client, you can do so by dereferencing the Arc. <br/>
 
