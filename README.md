@@ -44,6 +44,8 @@ Please have a look the following file for code snippets/samples
 
 [Write CSV File](#write-csv-file)
 
+[Async Trait](#async-trait)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9505,3 +9507,74 @@ fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ```
+
+#### [Async Trait](#async-trait)
+
+`Cargo.toml`
+
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+```
+
+```rust
+use tokio::time::{sleep, Duration};
+
+struct MyStruct {
+    // fields
+}
+
+impl MyStruct {
+    async fn async_method(&self) {
+        // Asynchronous code here
+        sleep(Duration::from_secs(1)).await;
+        println!("Async method completed");
+    }
+}
+```
+
+In this example, async_method is an asynchronous method of MyStruct.<br/>
+
+To use async methods, you must be in an asynchronous context.<br/>
+
+This typically means being inside another async function or block.<br/>
+
+```rust
+#[tokio::main]
+async fn main() {
+    let my_instance = MyStruct { /* fields */ };
+    my_instance.async_method().await;
+
+    println!("After async method");
+}
+```
+
+> Implementing Async Methods for Traits : If you need async methods in a trait, you’ll likely need the async-trait crate, as Rust’s traits don’t natively support async functions yet.
+
+```rust
+use async_trait::async_trait;
+
+#[async_trait]
+trait MyTrait {
+    async fn async_trait_method(&self);
+}
+
+#[async_trait]
+impl MyTrait for MyStruct {
+    async fn async_trait_method(&self) {
+        // Asynchronous code here
+        sleep(Duration::from_secs(1)).await;
+        println!("Async trait method completed");
+    }
+}
+```
+
+Important Notes
+ - Async methods return a Future, which must be .awaited to execute.
+ - To run async code, you need an async runtime. In these examples, Tokio is used.
+ - The `#[tokio::main]` attribute macro is a convenient way to start an async runtime for the main function.
+ - The async-trait crate is a workaround for the lack of native async function support in traits, due to some complexities with how futures and lifetimes interact in Rust’s type system.
+
+With these steps, you can effectively create and utilize asynchronous methods in your Rust applications, allowing for concurrent and parallel task execution.
+
