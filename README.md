@@ -46,6 +46,8 @@ Please have a look the following file for code snippets/samples
 
 [Async Trait](#async-trait)
 
+[Use Of ARC - Atomic Reference Counted](#use-of-arc)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9570,7 +9572,8 @@ impl MyTrait for MyStruct {
 }
 ```
 
-Important Notes
+> Important Notes
+
  - Async methods return a Future, which must be .awaited to execute.
  - To run async code, you need an async runtime. In these examples, Tokio is used.
  - The `#[tokio::main]` attribute macro is a convenient way to start an async runtime for the main function.
@@ -9578,3 +9581,59 @@ Important Notes
 
 With these steps, you can effectively create and utilize asynchronous methods in your Rust applications, allowing for concurrent and parallel task execution.
 
+#### [Use Of ARC - Atomic Reference Counted](#use-of-arc)
+
+In Rust, when you have an `Arc<Client>`` and you want to access the Client, you can do so by dereferencing the Arc. <br/>
+
+The Arc<T> (Atomic Reference Counted) type provides shared ownership of a value of type T, allocated in the heap. To access the Client for reading, you can simply dereference the Arc.
+
+Here’s how you can use it:<br/>
+
+> Accessing the Client for Reading
+
+If you just need to read data or call methods on the Client that don’t require mutable access, you can dereference the Arc directly:
+
+```rust
+use std::sync::Arc;
+// Assuming `Client` is from some crate or module you are using
+// use some_crate::Client;
+
+fn use_client(client_arc: Arc<Client>) {
+    // Dereference `Arc` to access `Client`
+    client_arc.some_method();
+    // ...
+}
+```
+
+In this example, some_method is a method on the Client object that you want to call. The Arc is automatically dereferenced.
+
+> Cloning the Arc for Concurrent Use
+
+If you want to use the Client in a concurrent context and need to pass it to other threads or async tasks, you can clone the Arc. Cloning the Arc increments the reference count and allows multiple owners of the Client. Each clone can then be used independently:
+
+```rust
+fn some_async_function(client_arc: Arc<Client>) {
+    // Do something asynchronously with client_arc
+}
+
+fn main() {
+    let client_arc = Arc::new(Client::new());
+    
+    // Clone the Arc to pass it to another context
+    let client_arc_clone = Arc::clone(&client_arc);
+
+    // Now both client_arc and client_arc_clone can be used independently
+    some_async_function(client_arc_clone);
+    // Continue using client_arc in the main context
+}
+```
+
+> This approach is thread-safe and is commonly used when sharing data between threads in Rust.
+
+> Important Note
+
+ - Remember that `Arc<T>` only allows shared immutable access to T. 
+ - If you need to mutate the data inside, consider using `Mutex<T>` or `RwLock<T>` inside the Arc (e.g., Arc<Mutex<Client>>). 
+ - This way, you can safely mutate the data in a concurrent context.
+ - Directly dereferencing Arc (as in *client_arc) is not common since it requires the inner type to implement Copy, and it’s not recommended for shared ownership scenarios.
+ - Instead, just use the Arc as shown in the examples above, and Rust’s dereferencing coercion will allow you to access the methods of Client directly.
