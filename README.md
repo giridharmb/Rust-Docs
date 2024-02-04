@@ -48,6 +48,8 @@ Please have a look the following file for code snippets/samples
 
 [Use Of ARC - Atomic Reference Counted](#use-of-arc-atomic-reference-counted)
 
+[Query GCP BigQuery Table](#query-gcp-bigquery-table)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9637,3 +9639,50 @@ fn main() {
  - This way, you can safely mutate the data in a concurrent context.
  - Directly dereferencing Arc (as in *client_arc) is not common since it requires the inner type to implement Copy, and it’s not recommended for shared ownership scenarios.
  - Instead, just use the Arc as shown in the examples above, and Rust’s dereferencing coercion will allow you to access the methods of Client directly.
+
+#### [Query GCP BigQuery Table](#query-gcp-bigquery-table)
+
+```rust
+use reqwest;
+use serde_yaml;
+use dotenv;
+use yup_oauth2::{read_service_account_key, ServiceAccountAuthenticator};
+use std::error::Error;
+use gcp_bigquery_client::model::query_request::QueryRequest;
+use tokio;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    // Load the service account key JSON file
+    let sa_key_file = "gcp_service_account.json";
+    let sa_key = read_service_account_key(sa_key_file).await?;
+
+
+    // Init BigQuery client
+    let client = gcp_bigquery_client::Client::from_service_account_key_file(sa_key_file).await?;
+
+    let project_id = "my-gcp-project";
+    let dataset_id = "my_data_set_1";
+
+    let table_id = "my_table_1";
+
+    // Now, you can proceed to create the authenticator
+    // Query
+    let mut rs = client
+        .job()
+        .query(
+            project_id,
+            QueryRequest::new("SELECT * FROM `my-gcp-project.my_data_set_1.my_table_1` where scrapets > timestamp_sub(current_timestamp(), interval 1 day)".to_string()),
+        )
+        .await?;
+    while rs.next_row() {
+        let resp = rs.query_response();
+        let rows = resp.rows.clone().unwrap();
+        for row in rows {
+            println!("{:#?}", row);
+        }
+    }
+
+    Ok(())
+}
+```
