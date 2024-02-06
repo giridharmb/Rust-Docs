@@ -50,6 +50,8 @@ Please have a look the following file for code snippets/samples
 
 [Query GCP BigQuery Table](#query-gcp-bigquery-table)
 
+[Use of ARC](#use-of-arc)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9686,3 +9688,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 ```
+
+#### [Use of ARC](#use-of-arc)
+
