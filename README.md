@@ -9691,7 +9691,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 #### [Use of ARC](#use-of-arc)
 
-![alt text]https://github.com/giridharmb/Rust-Docs/blob/master/images/arc-01.jpg
-![alt text]https://github.com/giridharmb/Rust-Docs/blob/master/images/arc-02.jpg
-![alt text]https://github.com/giridharmb/Rust-Docs/blob/master/images/arc-03.jpg
+![alt text]https://github.com/giridharmb/Rust-Docs/images/arc-01.jpg
+![alt text]https://github.com/giridharmb/Rust-Docs/images/arc-02.jpg
+![alt text]https://github.com/giridharmb/Rust-Docs/images/arc-03.jpg
 
