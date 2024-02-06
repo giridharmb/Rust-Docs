@@ -9691,7 +9691,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 #### [Use of ARC](#use-of-arc)
 
-<img src="images/arc-01.jpg" width="24em"/>
-<img src="images/arc-02.jpg" width="24em"/>
-<img src="images/arc-03.jpg" width="24em"/>
+<img src="images/arc-01.jpg"/>
+<img src="images/arc-02.jpg"/>
+<img src="images/arc-03.jpg"/>
 
