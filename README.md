@@ -52,6 +52,8 @@ Please have a look the following file for code snippets/samples
 
 [Use of ARC](#use-of-arc)
 
+[Worker Pool Using ASYNC And Channels](#worker-pool-using-async-and-channels)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9695,3 +9697,67 @@ async fn main() -> Result<(), Box<dyn Error>> {
 <img src="images/arc-02.jpg"/>
 <img src="images/arc-03.jpg"/>
 
+#### [Worker Pool Using ASYNC And Channels](#worker-pool-using-async-and-channels)
+
+```toml
+[dependencies]
+tokio = { version = "1", features = ["full"] }
+md5 = "0.7"
+```
+
+```rust
+use tokio::sync::mpsc;
+use tokio::task;
+use md5;
+
+async fn hash_worker(mut rx: mpsc::Receiver<String>, tx: mpsc::Sender<(String, String)>) {
+    while let Some(data) = rx.recv().await {
+        let hash = format!("{:x}", md5::compute(&data));
+        tx.send((data, hash)).await.expect("Failed to send hash result");
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let (task_tx, task_rx) = mpsc::channel(32);
+    let (result_tx, mut result_rx) = mpsc::channel(32);
+
+    let worker_count = 4;
+    for _ in 0..worker_count {
+        let task_rx = task_rx.clone();
+        let result_tx = result_tx.clone();
+
+        tokio::spawn(async move {
+            hash_worker(task_rx, result_tx).await;
+        });
+    }
+
+    // Send tasks to workers
+    let input_strings = vec!["Rust", "Tokio", "Async", "MD5"];
+    for data in input_strings {
+        task_tx.send(data.to_string()).await.expect("Failed to send task");
+    }
+
+    // Receive and print results
+    for _ in 0..input_strings.len() {
+        if let Some((data, hash)) = result_rx.recv().await {
+            println!("{} -> {}", data, hash);
+        }
+    }
+}
+```
+
+> How It Works
+
+- Channels: Two channels are created: one for sending tasks to workers (task_tx, task_rx) and another for sending results back (result_tx, result_rx).
+- Worker Pool: The pool consists of worker_count async tasks, each running the hash_worker function. Workers receive strings through task_rx, calculate the MD5 hash, and send the results through result_tx.
+- Sending Tasks: The main function sends a set of strings to be hashed to the workers.
+- Receiving Results: It then waits to receive the hash results and prints them.
+
+> Key Points
+
+- This example uses mpsc::channel for message passing between tasks. This channel is well-suited for scenarios where you have multiple producers and a single consumer.
+- The hash_worker function runs in a loop, processing incoming tasks until the channel is closed.
+- The md5::compute function is used to calculate the MD5 hash of each input string. The hashing operation is synchronous but lightweight, so it's run directly in the async worker tasks. For more CPU-intensive operations, consider using tokio::task::spawn_blocking to offload work to a thread pool.
+- The worker pool pattern demonstrated here is scalable and can be adapted for various async processing tasks in Rust.
+- This example provides a foundation for building asynchronous processing pipelines in Rust, leveraging the power of Tokio's async runtime and channels for efficient concurrency.
