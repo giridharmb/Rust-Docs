@@ -54,6 +54,8 @@ Please have a look the following file for code snippets/samples
 
 [Worker Pool Using ASYNC And Channels](#worker-pool-using-async-and-channels)
 
+[Escape Double Quotes From JSON String And Convert To Value](#escape-double-quotes-from-json-string-and-convert-to-value)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9761,3 +9763,46 @@ async fn main() {
 - The md5::compute function is used to calculate the MD5 hash of each input string. The hashing operation is synchronous but lightweight, so it's run directly in the async worker tasks. For more CPU-intensive operations, consider using tokio::task::spawn_blocking to offload work to a thread pool.
 - The worker pool pattern demonstrated here is scalable and can be adapted for various async processing tasks in Rust.
 - This example provides a foundation for building asynchronous processing pipelines in Rust, leveraging the power of Tokio's async runtime and channels for efficient concurrency.
+
+#### [Escape Double Quotes From JSON String And Convert To Value](#escape-double-quotes-from-json-string-and-convert-to-value)
+
+```rust
+use serde_json::{Value, Error};
+use serde::{Serialize, Deserialize};
+use serde_json::Error;
+
+fn main() -> Result<(), Error> {
+    let json_str = "{\"a\" : \"1\"}";
+    let v: Value = serde_json::from_str(json_str)?;
+
+    println!("Parsed JSON: {}", v);
+    Ok(())
+}
+```
+
+This code will parse the string into a serde_json::Value, which represents any valid JSON value. <br/>
+
+In this case, it’s an object with a single key-value pair ("a": "1").<br/>
+
+> If You Have a Specific Struct (Convert `JSON String` -> to -> `struct { }`)
+
+If you know the structure of your JSON and prefer to work with strongly typed data, you can define a struct and deserialize the JSON string into that struct:
+
+```rust
+use serde_json::{Value, Error};
+use serde::{Serialize, Deserialize};
+use serde_json::Error;
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MyJson {
+    a: String,
+}
+
+fn main() -> Result<(), Error> {
+    let json_str = "{\"a\" : \"1\"}";
+    let parsed: MyJson = serde_json::from_str(json_str)?;
+
+    println!("Parsed JSON into struct: {:?}", parsed);
+    Ok(())
+}
+```
