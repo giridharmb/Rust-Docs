@@ -56,7 +56,7 @@ Please have a look the following file for code snippets/samples
 
 [Escape Double Quotes From JSON String And Convert To Value](#escape-double-quotes-from-json-string-and-convert-to-value)
 
-[Query GCP BigQuery Table](#query-gcp-bigquery-table)
+[Query Google BigQuery Table](#query-google-bigquery-table)
 
 <hr/>
 
@@ -9809,7 +9809,7 @@ fn main() -> Result<(), Error> {
 }
 ```
 
-#### [Query GCP BigQuery Table](#query-gcp-bigquery-table)
+#### [Query Google BigQuery Table](#query-google-bigquery-table)
 
 The code below is applicable to my BigQuery table, which has 2 columns >>
 
