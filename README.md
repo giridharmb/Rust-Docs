@@ -56,6 +56,8 @@ Please have a look the following file for code snippets/samples
 
 [Escape Double Quotes From JSON String And Convert To Value](#escape-double-quotes-from-json-string-and-convert-to-value)
 
+[Query GCP BigQuery Table](#query-gcp-bigquery-table)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9804,5 +9806,160 @@ fn main() -> Result<(), Error> {
 
     println!("Parsed JSON into struct: {:?}", parsed);
     Ok(())
+}
+```
+
+#### [Query GCP BigQuery Table](#query-gcp-bigquery-table)
+
+The code below is applicable to my BigQuery table, which has 2 columns >>
+
+- column-1: called `scrapets` (which is of type `TIMESTAMP` in BigQuery)
+  - example : `2024-02-11 03:16:13 UTC`
+- column-2: called `payload` (which is of type `JSON` in BigQuery)
+  - example : `{"fields": {"name": "xyz", "count": 10}}` (basically a deeply nested JSON)
+
+On BigQuery table, make sure you enable this first
+
+- https://cloud.google.com/bigquery/docs/introduction-sql
+- https://cloud.google.com/bigquery/docs/introduction-sql#bigquery-sql-dialects
+
+
+Make sure you have your GCP Project Service JSON : `gcp_service_account.json`
+
+
+```rust
+use reqwest;
+use serde_yaml;
+use dotenv;
+use yup_oauth2::{read_service_account_key, ServiceAccountAuthenticator};
+use std::error::Error;
+use gcp_bigquery_client::model::query_request::QueryRequest;
+use gcp_bigquery_client::model::table_row::TableRow;
+use tokio;
+use serde::{Serialize, Deserialize};
+use serde_json::{json, Value};
+use toml::from_str;
+use reqwest::Client;
+
+use chrono::{DateTime, LocalResult, TimeZone, Utc};
+
+/*
+    Enable This First >>
+
+    https://cloud.google.com/bigquery/docs/introduction-sql
+
+    https://cloud.google.com/bigquery/docs/introduction-sql#bigquery-sql-dialects
+
+    BiqQuery Query >>
+
+    SELECT * FROM `my-gcp-project.my-data-set.my-custom-table` where scrapets > timestamp_sub(current_timestamp(), interval 1 day)
+*/
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BigQueryResponse {
+    kind: String,
+    rows: Vec<BigQueryRow>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BigQueryRow {
+    f: Vec<BigQueryCell>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct BigQueryCell {
+    v: Value, // Use serde_json::Value to handle different types dynamically
+}
+
+async fn authenticate() -> yup_oauth2::AccessToken {
+    let sa_key = read_service_account_key("gcp_service_account.json").await.expect("Failed to read service account key");
+    let auth = ServiceAccountAuthenticator::builder(sa_key).build().await.expect("Failed to build authenticator");
+
+    auth.token(&["https://www.googleapis.com/auth/bigquery.readonly"])
+        .await
+        .expect("Failed to obtain token")
+}
+
+
+async fn query_bigquery_table(token: yup_oauth2::AccessToken) -> Result<(), Box<dyn std::error::Error>> {
+    let client = Client::new();
+
+    let project_id = "my-gcp-project";
+    let dataset_id = "my-data-set";
+    let table_id = "my-custom-table";
+
+    let sql = "SELECT scrapets, payload FROM `my-gcp-project.my-data-set.my-custom-table` where scrapets > timestamp_sub(current_timestamp(), interval 1 hour)".to_string();
+
+    let query_url = format!("https://bigquery.googleapis.com/bigquery/v2/projects/{}/queries", project_id);
+
+    let response = client.post(&query_url)
+        .bearer_auth(token.token().unwrap())
+        .json(&serde_json::json!({
+            "useLegacySql": false,
+            "query": sql,
+        }))
+        .send()
+        .await?;
+
+    let response_body = response.text().await?;
+    let response_json: Value = serde_json::from_str(&response_body.as_str())?;
+
+    let structs = convert_response_to_struct(response_json)?;
+
+    for item in structs {
+        println!("{}", item.scrape_time_stamp);
+        println!("{}", item.payload_str.as_str());
+    }
+
+    Ok(())
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let token = authenticate().await;
+    println!("token : {}", token.token().unwrap().to_string());
+    query_bigquery_table(token).await?;
+    Ok(())
+}
+
+
+// Assuming `response_json` is your BigQuery JSON response as a serde_json::Value
+fn convert_response_to_struct(response_json: Value) -> Result<Vec<MyStruct>, serde_json::Error> {
+    // First, deserialize the whole response to the BigQueryResponse struct
+    let response: BigQueryResponse = serde_json::from_value(response_json)?;
+
+    // Now, process each row to extract and convert the data into MyStruct
+    let mut results: Vec<MyStruct> = Vec::new();
+    for row in response.rows {
+        if row.f.len() == 2 { // Assuming every row has exactly 2 fields
+            let float_str = row.f[0].v.as_str().unwrap_or_default().to_string();
+            let unix_timestamp_float = float_str.parse::<f64>().unwrap();
+            let seconds = unix_timestamp_float as i64; // epoch timestamp
+
+            let datetime: DateTime<Utc> = Utc.timestamp_opt(seconds, 0).unwrap();
+            let formatted_date_time = datetime.format("%Y-%m-%d %H:%M:%S").to_string();
+
+            let payload_string: String = row.f[1].v.clone().as_str().unwrap().to_string();
+            let payload: Value = serde_json::from_str(payload_string.as_str()).unwrap();
+            let payload_str: String = payload_string.to_string();
+
+            results.push(MyStruct {
+                scrape_time_stamp: formatted_date_time,
+                scrape_time_stamp_epoch: seconds,
+                payload ,
+                payload_str,
+            });
+        }
+    }
+
+    Ok(results)
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct MyStruct {
+    scrape_time_stamp: String, // date time ins YYY-MM-DD HH:MM:SS format
+    scrape_time_stamp_epoch: i64, // epoch time stamp
+    payload: Value, // Assuming this matches your JSON structure
+    payload_str: String, // Assuming this matches your JSON structure
 }
 ```
