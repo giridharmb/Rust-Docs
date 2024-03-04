@@ -58,6 +58,8 @@ Please have a look the following file for code snippets/samples
 
 [Query Google BigQuery Table](#query-google-bigquery-table)
 
+[Add CORS Headers To Actix Web](#add-cors-headers-to-actix-web)
+
 <hr/>
 
 How To Create A New Cargo Project (Executable App) ?
@@ -9961,5 +9963,37 @@ struct MyStruct {
     scrape_time_stamp_epoch: i64, // epoch time stamp
     payload: Value, // Assuming this matches your JSON structure
     payload_str: String, // Assuming this matches your JSON structure
+}
+```
+
+#### [Add CORS Headers To Actix Web](#add-cors-headers-to-actix-web)
+
+```toml
+[dependencies]
+actix-web = "4"
+actix-cors = "0.6"
+```
+
+```rust
+use actix_web::{web, App, HttpServer, HttpResponse};
+use actix_cors::Cors;
+
+async fn index() -> HttpResponse {
+    HttpResponse::Ok().body("Hello, CORS!")
+}
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    HttpServer::new(|| {
+        // Configure CORS middleware to allow all origins
+        let cors = Cors::permissive();
+
+        App::new()
+            .wrap(cors) // Use the CORS middleware
+            .route("/", web::get().to(index))
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
 }
 ```
